@@ -100,8 +100,8 @@ jobs:
         with:
           # Path to the manifest files which will be used for deployment.
           manifests: |
-            mediawiki
-            plausible
-            shared
+            dir/mediawiki
+            dir/plausible
+            dir/shared
           strategy: basic
           action: deploy
