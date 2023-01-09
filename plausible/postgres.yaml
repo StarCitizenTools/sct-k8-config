@@ -13,17 +13,6 @@ spec:
   selector:
     app: postgres
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-secret
-  namespace: default
-type: Opaque
-stringData:
-  POSTGRES_DB: postgres
-  POSTGRES_USER: postgres
-  POSTGRES_PASSWORD: password # use in secret.yaml
 
 ---
 apiVersion: v1
@@ -63,7 +52,7 @@ spec:
           image: postgres:12
           envFrom:
             - secretRef:
-                name: postgres-secret
+                name: plausible-postgres
           ports:
             - containerPort: 5432
               name: postgresdb
