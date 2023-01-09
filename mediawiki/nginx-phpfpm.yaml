@@ -131,12 +131,12 @@ spec:
     - name: CLOUDFLARE_APITOKEN
       valueFrom:
         secretKeyRef:
-          name: CLOUDFLARE-APITOKEN
+          name: cloudflare-apitoken
           key: cloudflare_apitoken
     - name: CLOUDFLARE_ZONEID
       valueFrom:
         secretKeyRef:
-          name: CLOUDFLARE-ZONEID
+          name: cloudflare-zoneid
           key: cloudflare_zoneid
     - name: DISCORD_WEBHOOKURL
       valueFrom:
@@ -146,32 +146,32 @@ spec:
     - name: FLICKR_APIKEY
       valueFrom:
         secretKeyRef:
-          name: FLICKR-APIKEY
+          name: flickr-apikey
           key: flickr_apikey
     - name: HCAPTCHA_SECRETKEY
       valueFrom:
         secretKeyRef:
-          name: HCAPTCHA-SECRETKEY
+          name: hcaptcha-secretkey
           key: hcaptcha_secretkey
     - name: HCAPTCHA_SITEKEY
       valueFrom:
         secretKeyRef:
-          name: HCAPTCHA-SITEKEY
+          name: hcaptcha-sitekey
           key: hcaptcha_sitekey
     - name: MEDIAWIKI_SECRETKEY
       valueFrom:
         secretKeyRef:
-          name: MEDIAWIKI-SECRETKEY
+          name: mediawiki-secretkey
           key: mw_secretkey
     - name: MEDIAWIKI_UPGRADEKEY
       valueFrom:
         secretKeyRef:
-          name: MEDIAWIKI-UPGRADEKEY
+          name: mediawiki-upgradekey
           key: mw_upgradekey
     - name: PRD_DB_PASSWORD
       valueFrom:
         secretKeyRef:
-          name: PRD-DB-PASSWORD
+          name: prd-db-password
           key: db_password
   - name: nginx
     image: nginx:1.23.3

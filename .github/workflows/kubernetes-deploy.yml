@@ -22,63 +22,63 @@ jobs:
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: CLOUDFLARE-APITOKEN
+          secret-name: cloudflare-apitoken
           data: ${{ secrets.CLOUDFLARE_APITOKEN }}
           
       - name: CLOUDFLARE_ZONEID Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: CLOUDFLARE-ZONEID
+          secret-name: cloudflare-zoneid
           data: ${{ secrets.CLOUDFLARE_ZONEID }}
 
       - name: DISCORD_WEBHOOKURL Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: DISCORD-WEBHOOKURL
+          secret-name: discord-webhookurl
           data: ${{ secrets.DISCORD_WEBHOOKURL }}
 
       - name: FLICKR_APIKEY Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: FLICKR-APIKEY
+          secret-name: flickr-apikey
           data: ${{ secrets.FLICKR_APIKEY }}
 
       - name: HCAPTCHA_SECRETKEY Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: HCAPTCHA-SECRETKEY
+          secret-name: hcaptcha-secretkey
           data: ${{ secrets.HCAPTCHA_SECRETKEY }}
 
       - name: HCAPTCHA_SITEKEY Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: HCAPTCHA-SITEKEY
+          secret-name: hcaptcha-sitekey
           data: ${{ secrets.HCAPTCHA_SITEKEY }}
 
       - name: MEDIAWIKI_SECRETKEY Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: MEDIAWIKI-SECRETKEY
+          secret-name: mediawiki-secretkey
           data: ${{ secrets.MEDIAWIKI_SECRETKEY }}
 
       - name: MEDIAWIKI_UPGRADEKEY Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: MEDIAWIKI-UPGRADEKEY
+          secret-name: mediawiki-upgradekey
           data: ${{ secrets.MEDIAWIKI_UPGRADEKEY }}
 
       - name: PRD_DB_PASSWORD Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: PRD-DB-PASSWORD
+          secret-name: prd-db-password
           data: ${{ secrets.PRD_DB_PASSWORD }}
 
       - name: PLAUSIBLE_CONFIG Secret
