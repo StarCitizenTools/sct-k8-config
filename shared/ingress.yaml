@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: default
+  name: nginx-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: analytics.k8s.starcitizen.tools   # your custom dns address (e.g. plausible.example.com)
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: plausible
+                port:
+                  number: 8000
+    - host: k8s.starcitizen.tools
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-phpfpm
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - analytics.k8s.starcitizen.tools      # your custom dns address (again, same as above)
+      secretName: plausible-ingress-cert
+    - hosts:
+        - k8s.starcitizen.tools
+      secretName: mediawiki-ingress-cert

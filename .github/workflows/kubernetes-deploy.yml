@@ -1,0 +1,97 @@
+name: Mediawiki Kubernetes Cluster Deployment
+
+on:
+  push:
+    branches:
+      - 'main'
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v3
+        id: install
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v3.0
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: CLOUDFLARE_APITOKEN Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: CLOUDFLARE_APITOKEN
+          data: ${{ secrets.CLOUDFLARE_APITOKEN }}
+          
+      - name: CLOUDFLARE_ZONEID Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: CLOUDFLARE_ZONEID
+          data: ${{ secrets.CLOUDFLARE_ZONEID }}
+
+      - name: DISCORD_WEBHOOKURL Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: DISCORD_WEBHOOKURL
+          data: ${{ secrets.DISCORD_WEBHOOKURL }}
+
+      - name: FLICKR_APIKEY Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: FLICKR_APIKEY
+          data: ${{ secrets.FLICKR_APIKEY }}
+
+      - name: HCAPTCHA_SECRETKEY Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: HCAPTCHA_SECRETKEY
+          data: ${{ secrets.HCAPTCHA_SECRETKEY }}
+
+      - name: HCAPTCHA_SITEKEY Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: HCAPTCHA_SITEKEY
+          data: ${{ secrets.HCAPTCHA_SITEKEY }}
+
+      - name: MEDIAWIKI_SECRETKEY Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: MEDIAWIKI_SECRETKEY
+          data: ${{ secrets.MEDIAWIKI_SECRETKEY }}
+
+      - name: MEDIAWIKI_UPGRADEKEY Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: MEDIAWIKI_UPGRADEKEY
+          data: ${{ secrets.MEDIAWIKI_UPGRADEKEY }}
+
+      - name: PRD_DB_PASSWORD Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: PRD_DB_PASSWORD
+          data: ${{ secrets.PRD_DB_PASSWORD }}
+
+      - name: PLAUSIBLE_CONFIG Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: PLAUSIBLE_CONFIG
+          stringData: ${{ secrets.PLAUSIBLE_CONFIG }}
+
+      - name: Deploy to Kubernetes cluster
+        uses: Azure/k8s-deploy@v4.9
+        with:
+          # Path to the manifest files which will be used for deployment.
+          manifests: /
+          strategy: basic
+          action: deploy
