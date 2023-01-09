@@ -55,4 +55,4 @@ spec:
             - containerPort: 8000
           envFrom:
             - secretRef:
-                name: PLAUSIBLE_CONFIG
+                name: plausible-config
