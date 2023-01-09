@@ -128,11 +128,51 @@ spec:
         exec:
           command: ["/bin/sh", "-c", "rsync -vaO --no-p /var/www/provisioning/ /var/www/mediawiki"]
     env:
-    - name: DB_PASSWORD
+    - name: CLOUDFLARE_APITOKEN
       valueFrom:
         secretKeyRef:
-          name: mariadb-secret
-          key: mariadb-root-password
+          name: CLOUDFLARE-APITOKEN
+          key: cloudflare_apitoken
+    - name: CLOUDFLARE_ZONEID
+      valueFrom:
+        secretKeyRef:
+          name: CLOUDFLARE-ZONEID
+          key: cloudflare_zoneid
+    - name: DISCORD_WEBHOOKURL
+      valueFrom:
+        secretKeyRef:
+          name: DISCORD-WEBHOOKURL
+          key: discord_webhookurl
+    - name: FLICKR_APIKEY
+      valueFrom:
+        secretKeyRef:
+          name: FLICKR-APIKEY
+          key: flickr_apikey
+    - name: HCAPTCHA_SECRETKEY
+      valueFrom:
+        secretKeyRef:
+          name: HCAPTCHA-SECRETKEY
+          key: hcaptcha_secretkey
+    - name: HCAPTCHA_SITEKEY
+      valueFrom:
+        secretKeyRef:
+          name: HCAPTCHA-SITEKEY
+          key: hcaptcha_sitekey
+    - name: MEDIAWIKI_SECRETKEY
+      valueFrom:
+        secretKeyRef:
+          name: MEDIAWIKI-SECRETKEY
+          key: mw_secretkey
+    - name: MEDIAWIKI_UPGRADEKEY
+      valueFrom:
+        secretKeyRef:
+          name: MEDIAWIKI-UPGRADEKEY
+          key: mw_upgradekey
+    - name: PRD_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: PRD-DB-PASSWORD
+          key: db_password
   - name: nginx
     image: nginx:1.23.3
     resources:
