@@ -47,7 +47,7 @@ spec:
             - containerPort: 6379
               name: redis
           volumeMounts:
-            - name: redis-pvc
+            - name: redis-pv
               mountPath: /data
       volumes:
         - name: redis-pv
