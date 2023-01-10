@@ -141,7 +141,7 @@ spec:
     - name: DISCORD_WEBHOOKURL
       valueFrom:
         secretKeyRef:
-          name: DISCORD-WEBHOOKURL
+          name: discord-webhookurl
           key: discord_webhookurl
     - name: FLICKR_APIKEY
       valueFrom:
