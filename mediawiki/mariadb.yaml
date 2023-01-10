@@ -65,7 +65,7 @@ spec:
         - name: MARIADB_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: prd_db_password
+              name: prd-db-password
               key: db_password
         - name: MARIADB_DATABASE
           value: scw_PRD
