@@ -273,7 +273,7 @@ spec:
     spec:
       containers:
         - name: clickhouse
-          image: yandex/clickhouse-server
+          image: starcitizentools/clickhouse:v0.1.1
 
           ports:
             - containerPort: 9000
