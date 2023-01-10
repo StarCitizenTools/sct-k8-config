@@ -50,6 +50,6 @@ spec:
             - name: redis-pvc
               mountPath: /data
       volumes:
-        - name: redis-pvc 
+        - name: redis-pv
           persistentVolumeClaim:
-            claimName: redis-pvc-claim
+            claimName: redis-pvc
