@@ -13,7 +13,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: plausibl
+  name: plausible
   namespace: default
 spec:
   selector:
