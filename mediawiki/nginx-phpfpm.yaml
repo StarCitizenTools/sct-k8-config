@@ -21,7 +21,7 @@ metadata:
 data:
   config : |
     server {
-      listen 80;
+      listen 0.0.0.0:80;
       server_name k8s.starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
@@ -99,7 +99,7 @@ metadata:
   name: nginx-phpfpm
   labels:
      app: nginx-phpfpm
-     tier: back-end
+     tier: backend
 spec:
   securityContext:
     fsGroup: 33
