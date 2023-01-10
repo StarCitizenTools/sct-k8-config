@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: plausible
-          image: plausible/analytics:latest
+          image: plausible/analytics:v1.5.1
           command: ["/bin/sh"]
           args:
             [
