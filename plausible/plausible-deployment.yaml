@@ -41,16 +41,16 @@ spec:
             requests:
               memory: "64Mi"
               cpu: "100m"
-          # livenessProbe:
-          #   initialDelaySeconds: 10
-          #   httpGet:
-          #     path: /
-          #     port: 8000
-          # readinessProbe:
-          #   initialDelaySeconds: 10
-          #   httpGet:
-          #     path: /
-          #     port: 8000
+          livenessProbe:
+            initialDelaySeconds: 10
+            httpGet:
+              path: /
+              port: 8000
+          readinessProbe:
+            initialDelaySeconds: 10
+            httpGet:
+              path: /
+              port: 8000
           ports:
             - containerPort: 8000
           envFrom:
