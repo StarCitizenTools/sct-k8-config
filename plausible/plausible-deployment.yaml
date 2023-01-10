@@ -42,12 +42,12 @@ spec:
               memory: "64Mi"
               cpu: "100m"
           livenessProbe:
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             httpGet:
               path: /
               port: 8000
           readinessProbe:
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             httpGet:
               path: /
               port: 8000
