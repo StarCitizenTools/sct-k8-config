@@ -115,7 +115,7 @@ spec:
             path: site.conf
   containers:
   - name: php
-    image: starcitizentools/mediawiki:v0.2.5
+    image: starcitizentools/mediawiki:v0.2.6
     ports:
      - containerPort: 9000
     resources:
