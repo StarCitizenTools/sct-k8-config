@@ -114,6 +114,20 @@ spec:
           - key: config
             path: site.conf
   containers:
+  - name: nginx
+    image: nginx:1.23.3
+    ports:
+     - containerPort: 80
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+    volumeMounts:
+      - name: webroot
+        mountPath: /var/www/mediawiki
+      - name: nginx-config-volume
+        mountPath: /etc/nginx/conf.d
+
   - name: php
     image: starcitizentools/mediawiki:v0.2.6
     ports:
@@ -175,16 +189,37 @@ spec:
         secretKeyRef:
           name: prd-db-password
           key: db_password
-  - name: nginx
-    image: nginx:1.23.3
-    ports:
-     - containerPort: 80
+
+  - name: jobrunner
+    image: starcitizentools/jobrunner:v0.2.0
     resources:
       limits:
-        memory: "128Mi"
+        memory: "256Mi"
         cpu: "500m"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
-      - name: nginx-config-volume
-        mountPath: /etc/nginx/conf.d
+    env:
+    - name: PRD_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: prd-db-password
+          key: db_password
+
+  - name: jobchron
+    image: starcitizentools/jobrunner:v0.2.0
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+    volumeMounts:
+      - name: webroot
+        mountPath: /var/www/mediawiki
+    env:
+    - name: PRD_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: prd-db-password
+          key: db_password
+    - name: RUNNER_TYPE
+      value: chron
