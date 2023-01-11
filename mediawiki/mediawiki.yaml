@@ -197,7 +197,7 @@ spec:
           key: db_password
 
   - name: jobrunner
-    image: starcitizentools/jobrunner:v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v0.2.0
     resources:
       requests:
         memory: "128Mi"
@@ -216,7 +216,7 @@ spec:
           key: db_password
 
   - name: jobchron
-    image: starcitizentools/jobrunner:v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v0.2.0
     resources:
       requests:
         memory: "128Mi"
