@@ -209,6 +209,46 @@ spec:
       - name: webroot
         mountPath: /var/www/mediawiki
     env:
+    - name: CLOUDFLARE_APITOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-apitoken
+          key: cloudflare_apitoken
+    - name: CLOUDFLARE_ZONEID
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-zoneid
+          key: cloudflare_zoneid
+    - name: DISCORD_WEBHOOKURL
+      valueFrom:
+        secretKeyRef:
+          name: discord-webhookurl
+          key: discord_webhookurl
+    - name: FLICKR_APIKEY
+      valueFrom:
+        secretKeyRef:
+          name: flickr-apikey
+          key: flickr_apikey
+    - name: HCAPTCHA_SECRETKEY
+      valueFrom:
+        secretKeyRef:
+          name: hcaptcha-secretkey
+          key: hcaptcha_secretkey
+    - name: HCAPTCHA_SITEKEY
+      valueFrom:
+        secretKeyRef:
+          name: hcaptcha-sitekey
+          key: hcaptcha_sitekey
+    - name: MEDIAWIKI_SECRETKEY
+      valueFrom:
+        secretKeyRef:
+          name: mediawiki-secretkey
+          key: mw_secretkey
+    - name: MEDIAWIKI_UPGRADEKEY
+      valueFrom:
+        secretKeyRef:
+          name: mediawiki-upgradekey
+          key: mw_upgradekey
     - name: PRD_DB_PASSWORD
       valueFrom:
         secretKeyRef:
@@ -234,4 +274,4 @@ spec:
           name: prd-db-password
           key: db_password
     - name: RUNNER_TYPE
-      value: chron
+      value: Chron
