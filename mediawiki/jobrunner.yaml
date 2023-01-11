@@ -24,7 +24,3 @@ spec:
             secretKeyRef:
               name: prd-db-password
               key: db_password
-        lifecycle:
-          postStart:
-            exec:
-              command: ["/bin/sh", "-c", "rsync -vaO --no-p /var/www/provisioning/ /var/www/mediawiki"]
