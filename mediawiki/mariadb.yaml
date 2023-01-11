@@ -59,8 +59,8 @@ spec:
               memory: "512Mi"
               cpu: "500m"
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "128Mi"
+              cpu: "100m"
           env:
             - name: MARIADB_ROOT_PASSWORD
               valueFrom:
