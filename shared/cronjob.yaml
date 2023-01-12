@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: internal-kubectl
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modify-pods
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modify-pods-to-sa
+subjects:
+  - kind: ServiceAccount
+    name: internal-kubectl
+roleRef:
+  kind: Role
+  name: modify-pods
+  apiGroup: rbac.authorization.k8s.io
+
+---  
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-sitemap
+spec:
+  schedule: "35 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: internal-kubectl
+          containers:
+          - name: cronjob-sitemap
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c", "kubectl exec --stdin --tty nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
+          - name: cronjob-updatesuggesterindex
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c", "kubectl exec --stdin --tty nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
