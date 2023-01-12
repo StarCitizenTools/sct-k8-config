@@ -29,8 +29,8 @@ data:
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
         include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
     		fastcgi_pass localhost:9000;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
       }
       
     	# Location for the wiki's root
