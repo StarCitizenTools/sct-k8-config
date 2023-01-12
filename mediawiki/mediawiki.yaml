@@ -25,7 +25,11 @@ data:
       server_name k8s.starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
-
+      
+      location /rest.php {
+        try_files $uri $uri/ /rest.php?$args;
+      }
+      
     	# Location for the wiki's root
     	location / {
     		try_files $uri $uri/ @mediawiki;
