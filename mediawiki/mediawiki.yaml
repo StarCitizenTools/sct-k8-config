@@ -24,6 +24,7 @@ data:
     	listen 0.0.0.0:80;
       server_name k8s.starcitizen.tools;
       root /var/www/mediawiki;
+      index index.php;
 
     	# Location for the wiki's root
     	location / {
@@ -32,8 +33,8 @@ data:
     		# Do this inside of a location so it can be negated
     		location ~ \.php$ {
     			try_files $uri $uri/ =404; # Don't let php execute non-existent php files
-    			include /etc/nginx/fastcgi_params;
-    			fastcgi_pass 127.0.0.1:9000;
+    			include fastcgi_params;
+    			fastcgi_pass localhost:9000;
     		}
     	}
 
@@ -70,10 +71,10 @@ data:
 
     	# Handling for the article path
     	location @mediawiki {
-    		include /etc/nginx/fastcgi_params;
+    		include fastcgi_params;
     		# article path should always be passed to index.php
     		fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
-    		fastcgi_pass  127.0.0.1:9000;
+    		fastcgi_pass localhost:9000;
     	}
 
     	# Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
@@ -83,9 +84,9 @@ data:
     		rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
 
     		# Run the thumb.php script
-    		include /etc/nginx/fastcgi_params;
+    		include fastcgi_params;
     		fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
-    		fastcgi_pass  127.0.0.1:9000;
+    		fastcgi_pass localhost:9000;
     	}
     }
 
