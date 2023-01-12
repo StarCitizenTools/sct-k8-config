@@ -40,7 +40,7 @@ kind: CronJob
 metadata:
   name: cronjob-sitemap
 spec:
-  schedule: "45 * * * *"
+  schedule: "0 1 * * *"
   jobTemplate:
     spec:
       template:
