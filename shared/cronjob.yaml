@@ -48,3 +48,4 @@ spec:
           - name: cronjob-updatesuggesterindex
             image: bitnami/kubectl:latest
             command: ["/bin/sh", "-c", "kubectl exec --stdin --tty nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
+          restartPolicy: OnFailure
