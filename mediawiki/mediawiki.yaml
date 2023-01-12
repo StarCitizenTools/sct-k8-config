@@ -132,7 +132,7 @@ spec:
         mountPath: /etc/nginx/conf.d
 
   - name: php
-    image: starcitizentools/mediawiki:v0.2.8
+    image: starcitizentools/mediawiki:139-v0.2.9
     ports:
      - containerPort: 9000
     resources:
