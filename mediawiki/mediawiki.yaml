@@ -18,7 +18,7 @@ metadata:
   name: nginx-config
   labels:
     tier: backend
-data:
+data: 
   config : |
     server {
     	listen 0.0.0.0:80;
