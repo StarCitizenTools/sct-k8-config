@@ -35,6 +35,7 @@ data:
     			try_files $uri $uri/ =404; # Don't let php execute non-existent php files
     			include fastcgi_params;
     			fastcgi_pass localhost:9000;
+          fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     		}
     	}
 
