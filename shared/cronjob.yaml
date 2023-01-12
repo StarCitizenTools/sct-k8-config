@@ -35,7 +35,7 @@ kind: CronJob
 metadata:
   name: cronjob-sitemap
 spec:
-  schedule: "35 * * * *"
+  schedule: "45 * * * *"
   jobTemplate:
     spec:
       template:
@@ -44,8 +44,8 @@ spec:
           containers:
           - name: cronjob-sitemap
             image: bitnami/kubectl:latest
-            command: ["/bin/sh", "-c", "kubectl exec --stdin --tty nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
+            command: ["/bin/sh", "-c", "kubectl exec --stdin nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
           - name: cronjob-updatesuggesterindex
             image: bitnami/kubectl:latest
-            command: ["/bin/sh", "-c", "kubectl exec --stdin --tty nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
+            command: ["/bin/sh", "-c", "kubectl exec --stdin nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
           restartPolicy: OnFailure
