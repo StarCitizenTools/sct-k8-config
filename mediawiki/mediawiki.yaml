@@ -217,6 +217,8 @@ spec:
 
   - name: jobrunner
     image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    command: ["/bin/sh"]
+    args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
       requests:
         memory: "128Mi"
@@ -276,6 +278,8 @@ spec:
 
   - name: jobchron
     image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    command: ["/bin/sh"]
+    args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
       requests:
         memory: "128Mi"
