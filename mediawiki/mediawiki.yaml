@@ -22,7 +22,7 @@ data:
   config : |
     server {
     	listen 0.0.0.0:80;
-      server_name k8s.starcitizen.tools;
+      server_name starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
       
@@ -151,7 +151,7 @@ spec:
         mountPath: /etc/nginx/conf.d
 
   - name: php
-    image: starcitizentools/mediawiki:139-v0.3.6
+    image: starcitizentools/mediawiki:139-v1.0.0
     ports:
      - containerPort: 9000
     resources:
