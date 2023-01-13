@@ -140,7 +140,7 @@ spec:
     resources:
       requests:
         memory: "128Mi"
-        cpu: "100m"
+        cpu: "50m"
       limits:
         memory: "128Mi"
         cpu: "500m"
@@ -160,7 +160,7 @@ spec:
         cpu: "250m"
       limits:
         memory: "512Mi"
-        cpu: "1"
+        cpu: "1.5"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
@@ -225,7 +225,7 @@ spec:
         cpu: "100m"
       limits:
         memory: "512Gi"
-        cpu: "500m"
+        cpu: "400m"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
@@ -282,11 +282,11 @@ spec:
     args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
       requests:
-        memory: "128Mi"
-        cpu: "50m"
+        memory: "64Mi"
+        cpu: "10m"
       limits:
         memory: "128Mi"
-        cpu: "100m"
+        cpu: "50m"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
