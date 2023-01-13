@@ -8,6 +8,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -38,3 +39,6 @@ spec:
     - hosts:
         - starcitizen.tools
       secretName: mediawiki-ingress-cert
+    - hosts:
+        - www.starcitizen.tools
+      secretName: www-mediawiki-ingress-cert

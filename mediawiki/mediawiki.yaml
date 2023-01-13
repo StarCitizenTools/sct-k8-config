@@ -216,7 +216,7 @@ spec:
           key: db_password
 
   - name: jobrunner
-    image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v1.0.0
     command: ["/bin/sh"]
     args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
@@ -277,7 +277,7 @@ spec:
           key: db_password
 
   - name: jobchron
-    image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v1.0.0
     command: ["/bin/sh"]
     args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
