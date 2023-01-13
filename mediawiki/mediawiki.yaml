@@ -224,7 +224,7 @@ spec:
         memory: "128Mi"
         cpu: "100m"
       limits:
-        memory: "1Gi"
+        memory: "512Gi"
         cpu: "500m"
     volumeMounts:
       - name: webroot
