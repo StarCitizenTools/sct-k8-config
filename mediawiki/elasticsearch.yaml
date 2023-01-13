@@ -16,6 +16,10 @@ spec:
             runAsUser: 0
           command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
     config:
+      action.auto_crate_index: false
+      action.disable_close_all_indices: true
+      action.disable_delete_all_indices: true
+      action.disable_shutdown: true
       xpack.security.authc:
           anonymous:
             username: anonymous
