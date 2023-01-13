@@ -18,65 +18,84 @@ metadata:
   name: nginx-config
   labels:
     tier: backend
-data:
+data: 
   config : |
     server {
-      listen 0.0.0.0:80;
-      server_name k8s.starcitizen.tools;
+    	listen 0.0.0.0:80;
+      server_name starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
-
-      client_max_body_size 5m;
-      client_body_timeout 60;
-
-      error_log  /var/log/nginx/error.log;
-      access_log /var/log/nginx/access.log;
       
-      location / {
-          try_files $uri $uri/ @rewrite;
+      location /rest.php {
+        try_files $uri $uri/ /rest.php?$args;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
+    		fastcgi_pass localhost:9000;
       }
+      
+    	# Location for the wiki's root
+    	location / {
+    		try_files $uri $uri/ @mediawiki;
 
-      location @rewrite {
-          rewrite ^/(.*)$ /index.php?title=$1&$args;
-      }
-
-      location ^~ /maintenance/ {
-          return 403;
-      }
-
-       location /rest.php {
-          try_files $uri $uri/ /rest.php?$args;
-      }
-
-      location ~ \.php$ {
-          try_files $uri =404;
-          fastcgi_split_path_info ^(.+\.php)(/.+)$;
-          fastcgi_pass localhost:9000;
-          fastcgi_index index.php;
-          include fastcgi_params;
+    		# Do this inside of a location so it can be negated
+    		location ~ \.php$ {
+    			try_files $uri $uri/ =404; # Don't let php execute non-existent php files
+    			include fastcgi_params;
+    			fastcgi_pass localhost:9000;
           fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-          fastcgi_param PATH_INFO $fastcgi_path_info;
-        }
-      
-      location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
-          try_files $uri /index.php;
-          expires max;
-          log_not_found off;
-      }
+    		}
+    	}
 
-      location = /_.gif {
-          expires max;
-          empty_gif;
-      }
+    	location /images {
+    		# Separate location for images/ so .php execution won't apply
+    		location ~ ^/images/thumb/(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
+    			# Thumbnail handler for MediaWiki
+    			# This location only matches on a thumbnail's url
+    			# If the file does not exist we use @thumb to run the thumb.php script
+    			try_files $uri $uri/ @thumb;
+    		}
+    	}
 
-      location ^~ /cache/ {
-          deny all;
-      }
+    	location /images/deleted {
+    		# Deny access to deleted images folder
+    		deny	all;
+    	}
 
-      location /dumps {
-          root /var/www/mediawiki/local;
-          autoindex on;
-      }
+    	# Deny access to folders MediaWiki has a .htaccess deny in
+    	location /cache       { deny all; }
+    	location /languages   { deny all; }
+    	location /maintenance { deny all; }
+    	location /serialized  { deny all; }
+
+    	# Just in case, hide .svn and .git too
+    	location ~ /.(svn|git)(/|$) { deny all; }
+
+    	# Hide any .htaccess files
+    	location ~ /.ht { deny all; }
+
+    	# Uncomment the following code if you wish to hide the installer/updater
+    	## Deny access to the installer
+    	location /mw-config { deny all; }
+
+    	# Handling for the article path
+    	location @mediawiki {
+    		include fastcgi_params;
+    		# article path should always be passed to index.php
+    		fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
+    		fastcgi_pass localhost:9000;
+    	}
+
+    	# Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
+    	location @thumb {
+    		# Do a rewrite here so that thumb.php gets the correct arguments
+    		rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
+    		rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
+
+    		# Run the thumb.php script
+    		include fastcgi_params;
+    		fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
+    		fastcgi_pass localhost:9000;
+    	}
     }
 
 ---
@@ -121,7 +140,7 @@ spec:
     resources:
       requests:
         memory: "128Mi"
-        cpu: "100m"
+        cpu: "50m"
       limits:
         memory: "128Mi"
         cpu: "500m"
@@ -132,7 +151,7 @@ spec:
         mountPath: /etc/nginx/conf.d
 
   - name: php
-    image: starcitizentools/mediawiki:v0.2.8
+    image: starcitizentools/mediawiki:139-v1.0.0
     ports:
      - containerPort: 9000
     resources:
@@ -140,8 +159,8 @@ spec:
         memory: "128Mi"
         cpu: "250m"
       limits:
-        memory: "256Mi"
-        cpu: "1"
+        memory: "512Mi"
+        cpu: "1.5"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
@@ -197,14 +216,16 @@ spec:
           key: db_password
 
   - name: jobrunner
-    image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v1.0.0
+    command: ["/bin/sh"]
+    args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
       requests:
         memory: "128Mi"
         cpu: "100m"
       limits:
-        memory: "256Mi"
-        cpu: "500m"
+        memory: "512Mi"
+        cpu: "400m"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
@@ -256,14 +277,16 @@ spec:
           key: db_password
 
   - name: jobchron
-    image: starcitizentools/mediawiki:jobrunner-v0.2.0
+    image: starcitizentools/mediawiki:jobrunner-v1.0.0
+    command: ["/bin/sh"]
+    args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
     resources:
       requests:
-        memory: "128Mi"
-        cpu: "50m"
+        memory: "64Mi"
+        cpu: "10m"
       limits:
         memory: "128Mi"
-        cpu: "100m"
+        cpu: "50m"
     volumeMounts:
       - name: webroot
         mountPath: /var/www/mediawiki
