@@ -16,7 +16,7 @@ spec:
             runAsUser: 0
           command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
     config:
-      action.auto_create_index: false
+      action.auto_create_index: '.watches,.triggered_watches,.watcher-history-*'
       xpack.security.authc:
           anonymous:
             username: anonymous
