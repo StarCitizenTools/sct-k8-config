@@ -3,7 +3,7 @@ name: Mediawiki Kubernetes Cluster Deployment
 on:
   push:
     branches:
-      - 'mw1-39'
+      - 'main'
 jobs:
   docker:
     runs-on: ubuntu-latest
