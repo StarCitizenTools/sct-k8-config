@@ -32,6 +32,16 @@ spec:
                 name: nginx-phpfpm
                 port:
                   number: 80
+    - host: scw.czen.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-phpfpm
+                port:
+                  number: 80
   tls:
     - hosts:
         - analytics.starcitizen.tools      # your custom dns address (again, same as above)
@@ -42,3 +52,6 @@ spec:
     - hosts:
         - www.starcitizen.tools
       secretName: www-mediawiki-ingress-cert
+    - hosts:
+        - scw.czen.me
+      secretName: czen-mediawiki-ingress-cert
