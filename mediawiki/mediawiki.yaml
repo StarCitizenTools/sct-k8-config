@@ -22,9 +22,17 @@ data:
   config : |
     server {
     	listen 0.0.0.0:80;
-      server_name starcitizen.tools;
+      server_name starcitizen.tools www.starcitizen.tools scw.czen.me;
       root /var/www/mediawiki;
       index index.php;
+      
+      # Security Headers
+      add_header X-XSS-Protection "1; mode=block";
+      add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
+      add_header X-Frame-Options "DENY";
+      add_header Referrer-Policy "strict-origin-when-cross-origin";
+      add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+      add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
       
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
@@ -60,6 +68,38 @@ data:
     		# Deny access to deleted images folder
     		deny	all;
     	}
+
+      # Cache control
+      location ~* \.woff2* {
+         expires 1m;
+         add_header Cache-Control "public, no-transform";
+         add_header X-XSS-Protection "1; mode=block";
+         add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
+         add_header X-Frame-Options "DENY";
+         add_header Referrer-Policy "strict-origin-when-cross-origin";
+         add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+      }
+      location ~* \.svg {
+         expires 1m;
+         add_header Cache-Control "public, no-transform";
+         add_header X-XSS-Protection "1; mode=block";
+         add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
+         add_header X-Frame-Options "DENY";
+         add_header Referrer-Policy "strict-origin-when-cross-origin";
+         add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+      }
+      location ~* \.(ico|jpg|jpeg|png|gif)$ {
+         expires 2h;
+         add_header Cache-Control "public, no-transform";
+         add_header X-XSS-Protection "1; mode=block";
+         add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
+         add_header X-Frame-Options "DENY";
+         add_header Referrer-Policy "strict-origin-when-cross-origin";
+         add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+      }
 
     	# Deny access to folders MediaWiki has a .htaccess deny in
     	location /cache       { deny all; }
