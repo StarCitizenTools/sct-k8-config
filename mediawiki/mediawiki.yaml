@@ -21,7 +21,7 @@ metadata:
 data: 
   config : |
     server {
-    	listen 0.0.0.0:80 http2;
+    	listen 0.0.0.0:80;
       server_name starcitizen.tools www.starcitizen.tools scw.czen.me;
       root /var/www/mediawiki;
       index index.php;
