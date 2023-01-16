@@ -63,7 +63,7 @@ data:
       add_header X-Frame-Options "DENY";
       add_header Referrer-Policy "strict-origin-when-cross-origin";
       add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
-      add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+      add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
       
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
@@ -109,7 +109,7 @@ data:
          add_header X-Frame-Options "DENY";
          add_header Referrer-Policy "strict-origin-when-cross-origin";
          add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
-        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
       }
       location ~* \.svg {
          expires 1m;
@@ -119,7 +119,7 @@ data:
          add_header X-Frame-Options "DENY";
          add_header Referrer-Policy "strict-origin-when-cross-origin";
          add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
-        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
       }
       location ~* \.(ico|jpg|jpeg|png|gif)$ {
          expires 2h;
@@ -129,7 +129,7 @@ data:
          add_header X-Frame-Options "DENY";
          add_header Referrer-Policy "strict-origin-when-cross-origin";
          add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
-        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'"
+        add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
       }
 
     	# Deny access to folders MediaWiki has a .htaccess deny in
