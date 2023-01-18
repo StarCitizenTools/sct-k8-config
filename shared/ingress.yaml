@@ -5,12 +5,11 @@ metadata:
 data:
   allow-snippet-annotations: "true"
   ssl-buffer-size: "16K"
-  use-gzip: "true"
-  enable-brotli: "true"
+  use-gzip: "false"
+  enable-brotli: "false"
   use-proxy-protocol: "true"
   use-forwarded-headers: "true"
   worker-processes: "1"
-  
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -23,6 +22,10 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64M"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+          more_set_headers "X-Forwarded-For $http_x_forwarded_for";
+
 spec:
   ingressClassName: nginx
   rules:
