@@ -190,6 +190,7 @@ spec:
   selector:
     matchLabels:
       app: nginx-phpfpm
+  revisionHistoryLimit: 0
   template:
     metadata:
       labels:
