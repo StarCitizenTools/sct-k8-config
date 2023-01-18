@@ -185,6 +185,9 @@ kind: Deployment
 metadata:
   name: nginx-phpfpm
 spec:
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
   selector:
     matchLabels:
       app: nginx-phpfpm
