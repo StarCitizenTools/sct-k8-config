@@ -83,6 +83,18 @@ data:
           add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
           add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
         
+          location ~* \.svg {
+            expires 30d;
+            add_header Cache-Control "public, no-transform";
+            add_header X-XSS-Protection "1; mode=block";
+            add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
+            add_header X-Frame-Options "DENY";
+            add_header Referrer-Policy "strict-origin-when-cross-origin";
+            add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+            add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
+            try_files $uri $uri/ @thumb;
+          }
+
     			# Thumbnail handler for MediaWiki
     			# This location only matches on a thumbnail's url
     			# If the file does not exist we use @thumb to run the thumb.php script
@@ -133,7 +145,7 @@ data:
       
       # Cache control
      
-      location ~* \.woff2* {
+      location ~* /resources/.*\.woff2* {
         expires 30d;
         add_header Cache-Control "public, no-transform";
         add_header X-XSS-Protection "1; mode=block";
@@ -144,7 +156,7 @@ data:
         add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
       }
 
-      location ~* \.svg {
+      location ~* /resources/.*\.svg {
         expires 30d;
         add_header Cache-Control "public, no-transform";
         add_header X-XSS-Protection "1; mode=block";
