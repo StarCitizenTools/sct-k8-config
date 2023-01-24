@@ -105,7 +105,7 @@ spec:
               subPath: .s3cfg
             envFrom:
             - secretRef:
-                name: BACKUP_KEYS
+                name: backup-keys
             env:
             - name: MARIADB_ROOT_PASSWORD
               valueFrom:
