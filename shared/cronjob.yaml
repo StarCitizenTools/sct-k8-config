@@ -100,7 +100,7 @@ spec:
             volumeMounts:
             - name: tmp-volume
               mountPath: /tmp/dump/
-            - name: s3config
+            - name: s3-config-vol
               mountPath: /root/.s3cfg
               subPath: .s3cfg
             envFrom:
