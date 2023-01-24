@@ -96,7 +96,7 @@ spec:
             args:
             - sh
             - -c
-            - mysqldump -u root -h mariadb-service.default.svc.cluster.local --password=${MARIADB_ROOT_PASSWORD} scw_PROD > /tmp/dump/databasebackup$(date +%Y-%m-%d).sql && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).sql s3://sct-backups/DB/MEDIAWIKI/ 
+            - mysqldump -u root -h mariadb-service.default.svc.cluster.local --single-transaction --password=${MARIADB_ROOT_PASSWORD} scw_PROD > /tmp/dump/databasebackup$(date +%Y-%m-%d).sql && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).sql s3://sct-backups/DB/MEDIAWIKI/ 
             volumeMounts:
             - name: tmp-volume
               mountPath: /tmp/dump/
