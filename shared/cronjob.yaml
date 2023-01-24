@@ -41,6 +41,9 @@ metadata:
   name: cronjob-sitemap
 spec:
   schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       template:
@@ -49,8 +52,73 @@ spec:
           containers:
           - name: cronjob-sitemap
             image: bitnami/kubectl:latest
-            command: ["/bin/sh", "-c", "kubectl exec --stdin nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
+            command: ["/bin/sh", "-c", "POD=$(kubectl get pod -l app=nginx-phpfpm -o jsonpath='{.items[0].metadata.name}'')", "kubectl exec --stdin $POD --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
+          restartPolicy: OnFailure
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-updatesuggesterindex
+spec:
+  schedule: "15 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: internal-kubectl
+          containers:
           - name: cronjob-updatesuggesterindex
             image: bitnami/kubectl:latest
-            command: ["/bin/sh", "-c", "kubectl exec --stdin nginx-phpfpm --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
+            command: ["/bin/sh", "-c",  "POD=$(kubectl get pod -l app=nginx-phpfpm -o jsonpath='{.items[0].metadata.name}'')", "kubectl exec --stdin $POD  --container php -- /bin/bash -c 'php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php'"]
           restartPolicy: OnFailure
+
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cronjob-mariadb-backup
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-mariadb-backup
+            image: d3fk/mysql-s3-backup:stable
+            args:
+            - sh
+            - -c
+            - mysqldump -u root -h mariadb-service.default.svc.cluster.local --password=${MARIADB_ROOT_PASSWORD} scw_PROD > /tmp/dump/databasebackup$(date +%Y-%m-%d).sql && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).sql s3://sct-backups/DB/MEDIAWIKI/ 
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp/dump/
+            - name: s3config
+              mountPath: /root/.s3cfg
+              subPath: .s3cfg
+            envFrom:
+            - secretRef:
+                name: BACKUP_KEYS
+            env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prd-db-password
+                  key: db_password
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
+          - name: s3-config-vol
+            configMap:
+              name: s3-config
+              items:
+              - key: ".s3cfg"
+                path: ".s3cfg"
+          restartPolicy: Never

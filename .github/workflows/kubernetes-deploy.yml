@@ -96,6 +96,13 @@ jobs:
           secret-type: 'generic'
           secret-name: plausible-config
           data: ${{ secrets.PLAUSIBLE_CONFIG }}
+      
+      - name: BACKUP_KEYS Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: backup-keys
+          data: ${{ secrets.BACKUP_KEYS }}
 
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v4.9
