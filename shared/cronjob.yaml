@@ -122,3 +122,25 @@ spec:
               - key: ".s3cfg"
                 path: ".s3cfg"
           restartPolicy: Never
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-clickhouse-backup
+spec:
+  schedule: "45 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: internal-kubectl
+          containers:
+          - name: cronjob-clickhouse-backup
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c",  "kubectl exec --stdin clickhouse-statefulset-0 -- /bin/bash -c 'sh /var/lib/backup.sh'"]
+          restartPolicy: OnFailure
+          
