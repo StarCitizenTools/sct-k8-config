@@ -90,7 +90,7 @@ spec:
         - name: webroot
           mountPath: /var/www/mediawiki
         - name: s3-config-vol
-          mountPath: /root/.s3cfg
+          mountPath: /var/www/.s3cfg
           subPath: .s3cfg
         lifecycle:
           postStart:
