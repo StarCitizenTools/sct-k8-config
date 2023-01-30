@@ -45,6 +45,12 @@ spec:
       - name: webroot
         persistentVolumeClaim:
           claimName: webroot
+      - name: s3-config-vol
+        configMap:
+          name: s3-config
+          items:
+          - key: ".s3cfg"
+            path: ".s3cfg"
       - name: nginx-config-volume
         configMap:
           name: nginx-config
@@ -70,7 +76,7 @@ spec:
             mountPath: /etc/nginx/conf.d
 
       - name: php
-        image: starcitizentools/mediawiki:139-v1.0.6
+        image: starcitizentools/mediawiki:139-v1.0.7
         ports:
          - containerPort: 9000
         resources:
@@ -81,12 +87,18 @@ spec:
             memory: "512Mi"
             cpu: "1.75"
         volumeMounts:
-          - name: webroot
-            mountPath: /var/www/mediawiki
+        - name: webroot
+          mountPath: /var/www/mediawiki
+        - name: s3-config-vol
+          mountPath: /root/.s3cfg
+          subPath: .s3cfg
         lifecycle:
           postStart:
             exec:
               command: ["/bin/sh", "-c", "rsync -vaO --no-p /var/www/provisioning/ /var/www/mediawiki"]
+        envFrom:
+        - secretRef:
+            name: backup-keys
         env:
         - name: CLOUDFLARE_APITOKEN
           valueFrom:
