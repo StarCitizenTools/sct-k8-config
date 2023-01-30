@@ -144,3 +144,45 @@ spec:
             command: ["/bin/sh", "-c",  "kubectl exec --stdin clickhouse-statefulset-0 -- /bin/bash -c 'sh /var/lib/backup.sh'"]
           restartPolicy: OnFailure
           
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cronjob-postgres-backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-postgres-backup
+            image: starcitizentools/postgres-s3cmd:v0.0.1
+            args:
+            - sh
+            - -c
+            - PGPASSWORD=${POSTGRES_PASSWORD} pg_dump -U ${POSTGRES_USER} -h postgres-service.default.svc.cluster.local ${POSTGRES_DB} > /tmp/dump/databasebackup$(date +%Y-%m-%d).dump && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).dump s3://sct-backups/DB/POSTGRES/ 
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp/dump/
+            - name: s3-config-vol
+              mountPath: /root/.s3cfg
+              subPath: .s3cfg
+            envFrom:
+            - secretRef:
+                name: backup-keys
+            - secretRef:
+                name: plausible-postgres
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
+          - name: s3-config-vol
+            configMap:
+              name: s3-config
+              items:
+              - key: ".s3cfg"
+                path: ".s3cfg"
+          restartPolicy: Never
