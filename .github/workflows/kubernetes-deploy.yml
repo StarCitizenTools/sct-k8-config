@@ -104,6 +104,20 @@ jobs:
           secret-name: backup-keys
           data: ${{ secrets.BACKUP_KEYS }}
 
+      - name: IMAGES_KEYS Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: images-keys
+          data: ${{ secrets.IMAGES_KEYS }}
+
+      - name: SITEMAP_KEYS Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: sitemap-keys
+          data: ${{ secrets.SITEMAP_KEYS }}
+
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v4.9
         with:
