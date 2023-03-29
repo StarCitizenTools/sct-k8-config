@@ -76,7 +76,7 @@ spec:
             mountPath: /etc/nginx/conf.d
 
       - name: php
-        image: starcitizentools/mediawiki:139-v1.1.0
+        image: starcitizentools/mediawiki:139-v1.2.0
         ports:
          - containerPort: 9000
         resources:
@@ -145,6 +145,16 @@ spec:
             secretKeyRef:
               name: prd-db-password
               key: db_password
+        - name: IMAGES_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: images-keys
+              key: IMAGES_ACCESS_KEY
+        - name: IMAGES_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: images-keys
+              key: IMAGES_SECRET_KEY
     
       - name: jobrunner
         image: starcitizentools/mediawiki:jobrunner-v1.0.0
@@ -206,6 +216,16 @@ spec:
             secretKeyRef:
               name: prd-db-password
               key: db_password
+        - name: IMAGES_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: images-keys
+              key: IMAGES_ACCESS_KEY
+        - name: IMAGES_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: images-keys
+              key: IMAGES_SECRET_KEY
 
       - name: jobchron
         image: starcitizentools/mediawiki:jobrunner-v1.0.0
