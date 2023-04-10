@@ -30,7 +30,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: analytics.starcitizen.tools   # your custom dns address (e.g. plausible.example.com)
+    - host: analytics.starcitizen.tools
       http:
         paths:
           - path: /
@@ -62,7 +62,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - analytics.starcitizen.tools      # your custom dns address (again, same as above)
+        - analytics.starcitizen.tools
       secretName: plausible-ingress-cert
     - hosts:
         - starcitizen.tools
