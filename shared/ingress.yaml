@@ -48,7 +48,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nginx-phpfpm
+                name: nginx-service
                 port:
                   number: 80
     - host: scw.czen.me
@@ -58,7 +58,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nginx-phpfpm
+                name: nginx-service
                 port:
                   number: 80
   tls:

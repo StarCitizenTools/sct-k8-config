@@ -57,7 +57,7 @@ data:
         try_files $uri $uri/ /rest.php?$args;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
-    		fastcgi_pass localhost:9000;
+    		fastcgi_pass php-service.default.svc.cluster.local:9000;
       }
       
     	# Location for the wiki's root
@@ -67,7 +67,7 @@ data:
     		location ~ \.php$ {
     			try_files $uri $uri/ =404; # Don't let php execute non-existent php files
     			include fastcgi_params;
-    			fastcgi_pass localhost:9000;
+    			fastcgi_pass php-service.default.svc.cluster.local:9000;
           fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     		}
     	}
@@ -117,7 +117,7 @@ data:
     		include fastcgi_params;
     		# article path should always be passed to index.php
     		fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
-    		fastcgi_pass localhost:9000;
+    		fastcgi_pass php-service.default.svc.cluster.local:9000;
     	}
 
     	# Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
@@ -129,7 +129,7 @@ data:
     		# Run the thumb.php script
     		include fastcgi_params;
     		fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
-    		fastcgi_pass localhost:9000;
+    		fastcgi_pass php-service.default.svc.cluster.local:9000;
     	}
       
       # Cache control
