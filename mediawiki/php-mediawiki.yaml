@@ -4,7 +4,7 @@ metadata:
   name: php-service
 spec:
   selector:
-    app: php
+    app: php-mediawiki
   type: ClusterIP
   ports:
   - protocol: TCP
@@ -13,19 +13,19 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: php
+  name: php-mediawiki
 spec:
   strategy:
     rollingUpdate:
       maxSurge: 100%
   selector:
     matchLabels:
-      app: php
+      app: php-mediawiki
   revisionHistoryLimit: 0
   template:
     metadata:
       labels:
-        app: php
+        app: php-mediawiki
     spec:
       securityContext:
         fsGroup: 33
@@ -37,7 +37,7 @@ spec:
           - key: config
             path: site.conf
       containers:
-      - name: php
+      - name: php-mediawiki
         image: starcitizentools/mediawiki:139-v2.0.1
         ports:
          - containerPort: 9000
