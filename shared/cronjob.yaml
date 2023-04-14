@@ -95,7 +95,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/tmp/dump/ --identifier=starcitizentools --server=https://sitemap.starcitizen.tools --compress=no --skip-redirects;s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg /tmp/dump/* s3://sitemap.starcitizen.tools
+            - php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/tmp/dump/ --identifier=starcitizentools --server=https://starcitizen.tools --compress=no --skip-redirects;sed -i 's/starcitizen.tools/sitemap.starcitizen.tools/g' /tmp/dump/sitemap-index-starcitizentools.xml;s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg /tmp/dump/* s3://sitemap.starcitizen.tools
 ---
 apiVersion: batch/v1
 kind: CronJob
