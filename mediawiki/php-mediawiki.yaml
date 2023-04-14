@@ -29,16 +29,9 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
-      volumes:
-      - name: nginx-config-volume
-        configMap:
-          name: nginx-config
-          items:
-          - key: config
-            path: site.conf
       containers:
       - name: php-mediawiki
-        image: starcitizentools/mediawiki:139-v2.0.1
+        image: starcitizentools/mediawiki:139-v2.0.2
         ports:
          - containerPort: 9000
         resources:
