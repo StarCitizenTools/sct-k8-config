@@ -47,13 +47,55 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: cronjob-sitemap
         spec:
-          serviceAccountName: internal-kubectl
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 33
+          volumes:
+          - name: s3-config-vol
+            configMap:
+              name: s3-config
+              items:
+              - key: ".s3cfg"
+                path: ".s3cfg"
+          - name: tmp-volume
+            emptyDir: {}
           containers:
           - name: cronjob-sitemap
-            image: bitnami/kubectl:latest
-            command: ["/bin/sh", "-c", "POD=$(kubectl get pod -l app=nginx-phpfpm -o jsonpath='{.items[0].metadata.name}')", "kubectl exec --stdin $POD --container php -- /bin/bash -c 'php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/var/www/mediawiki/sitemap/ --identifier=starcitizentools --urlpath=/sitemap --server=https://starcitizen.tools --compress=no --skip-redirects'"]
-          restartPolicy: OnFailure
+            image: starcitizentools/mediawiki:139-v2.0.3
+            resources:
+              limits:
+                memory: "512Mi"
+                cpu: "0.5"
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp/dump/
+            - name: s3-config-vol
+              mountPath: /www-data/.s3cfg
+              subPath: .s3cfg
+            env:
+            - name: PRD_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prd-db-password
+                  key: db_password
+            - name: SITEMAP_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sitemap-keys
+                  key: SITEMAP_ACCESS_KEY
+            - name: SITEMAP_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sitemap-keys
+                  key: SITEMAP_SECRET_KEY
+            command:
+            - /bin/sh
+            - -c
+            - php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/tmp/dump/ --identifier=starcitizentools --server=https://sitemap.starcitizen.tools --compress=no --skip-redirects;s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg /tmp/dump/* s3://sitemap.starcitizen.tools
 ---
 apiVersion: batch/v1
 kind: CronJob
