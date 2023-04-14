@@ -10,7 +10,7 @@ data:
       disable_progress_bar: true     # DISABLE_PROGRESS_BAR, show progress bar during upload and download, have sense only when `upload_concurrency` and `download_concurrency` equal 1
       backups_to_keep_local: 3       # BACKUPS_TO_KEEP_LOCAL, how much newest local backup should keep, 0 mean all created backups will keep on local disk
                                      # you shall to run `clickhouse-backup delete local <backup_name>` command to avoid useless disk space allocations
-      backups_to_keep_remote: 10      # BACKUPS_TO_KEEP_REMOTE, how much newest backup should keep on remote storage, 0 mean all uploaded backups will keep on remote storage. 
+      backups_to_keep_remote: 21      # BACKUPS_TO_KEEP_REMOTE, how much newest backup should keep on remote storage, 0 mean all uploaded backups will keep on remote storage. 
                                      # if old backup is required for newer incremental backup, then it will don't delete. Be careful with long incremental backup sequences.
       log_level: info                # LOG_LEVEL, allow `debug`, `info`, `warn`, `error`
       allow_empty_backups: false     # ALLOW_EMPTY_BACKUPS
