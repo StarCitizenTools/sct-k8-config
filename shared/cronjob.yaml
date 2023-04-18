@@ -117,7 +117,7 @@ spec:
           restartPolicy: OnFailure
 
 ---
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: cronjob-mariadb-backup
@@ -185,7 +185,7 @@ spec:
           restartPolicy: OnFailure
           
 ---
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: cronjob-postgres-backup
