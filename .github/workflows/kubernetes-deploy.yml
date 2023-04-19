@@ -3,7 +3,7 @@ name: Mediawiki Kubernetes Cluster Deployment
 on:
   push:
     branches:
-      - 'main'
+      - 'smw'
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -18,7 +18,7 @@ jobs:
         with:
           cluster-type: generic
           method: kubeconfig
-          kubeconfig: ${{ secrets.KUBECONFIG }}
+          kubeconfig: ${{ secrets.KUBECONFIG_DEV }}
 
       - name: CLOUDFLARE_APITOKEN Secret
         uses: Azure/k8s-create-secret@v4.0
@@ -124,7 +124,6 @@ jobs:
           # Path to the manifest files which will be used for deployment.
           manifests: |
             mediawiki
-            plausible
             shared
           strategy: basic
           action: deploy

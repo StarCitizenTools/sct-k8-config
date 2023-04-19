@@ -31,27 +31,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: analytics.starcitizen.tools
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: plausible
-                port:
-                  number: 8000
-    - host: starcitizen.tools
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: nginx-service
-                port:
-                  number: 80
-    - host: scw.czen.me
+    - host: dev.starcitizen.tools
       http:
         paths:
           - path: /
@@ -63,14 +43,5 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - analytics.starcitizen.tools
-      secretName: plausible-ingress-cert
-    - hosts:
-        - starcitizen.tools
-      secretName: mediawiki-ingress-cert
-    - hosts:
-        - www.starcitizen.tools
-      secretName: www-mediawiki-ingress-cert
-    - hosts:
-        - scw.czen.me
-      secretName: czen-mediawiki-ingress-cert
+        - dev.starcitizen.tools
+      secretName: dev-mediawiki-ingress-cert
