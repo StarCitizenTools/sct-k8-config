@@ -47,7 +47,8 @@ spec:
             memory: "128Mi"
             cpu: "50m"
         envFrom:
-        - name: RUNNER_TYPE
-          value: Chron
         - secretRef:
             name: mediawiki-keys
+        env:
+        - name: RUNNER_TYPE
+          value: Chron
