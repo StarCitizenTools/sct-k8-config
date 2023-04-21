@@ -1,67 +1,3 @@
----  
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: cronjob-sitemap
-spec:
-  schedule: "0 7 * * *"
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 1
-  jobTemplate:
-    spec:
-      template:
-        metadata:
-          labels:
-            app: cronjob-sitemap
-        spec:
-          restartPolicy: OnFailure
-          securityContext:
-            fsGroup: 33
-          volumes:
-          - name: s3-config-vol
-            configMap:
-              name: s3-config
-              items:
-              - key: ".s3cfg"
-                path: ".s3cfg"
-          - name: tmp-volume
-            emptyDir: {}
-          containers:
-          - name: cronjob-sitemap
-            image: starcitizentools/mediawiki:139-v2.1.1
-            resources:
-              limits:
-                memory: "512Mi"
-                cpu: "0.5"
-            volumeMounts:
-            - name: tmp-volume
-              mountPath: /tmp/dump/
-            - name: s3-config-vol
-              mountPath: /www-data/.s3cfg
-              subPath: .s3cfg
-            env:
-            - name: PRD_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: prd-db-password
-                  key: db_password
-            - name: SITEMAP_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: sitemap-keys
-                  key: SITEMAP_ACCESS_KEY
-            - name: SITEMAP_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: sitemap-keys
-                  key: SITEMAP_SECRET_KEY
-            command:
-            - /bin/sh
-            - -c
-            - php /var/www/mediawiki/maintenance/generateSitemap.php --memory-limit=50M --fspath=/tmp/dump/ --identifier=starcitizentools --server=https://starcitizen.tools --compress=no --skip-redirects;sed -i 's/starcitizen.tools/sitemap.starcitizen.tools/g' /tmp/dump/sitemap-index-starcitizentools.xml;s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg /tmp/dump/* s3://sitemap.starcitizen.tools
-
----
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -78,8 +14,70 @@ spec:
           containers:
           - name: cronjob-daily
             image: starcitizentools/mediawiki:139-v2.1.1
+            envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            command: ["/bin/sh"]
+            args:
+            - -c
+            - >-
+                php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --quiet --shallow-update &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php --quiet &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildPropertyStatistics.php --quiet &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildConceptCache.php --quiet --update --create
+          restartPolicy: OnFailure
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-weekly
+spec:
+  schedule: "0 8 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-weekly
+            image: starcitizentools/mediawiki:139-v2.1.1
+            envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            command: ["/bin/sh"]
+            args:
+            - -c
+            - >-
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --quiet -d 100 &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --quiet --skip-import
+          restartPolicy: OnFailure
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-monthly
+spec:
+  schedule: "0 9 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-monthly
+            image: starcitizentools/mediawiki:139-v2.1.1
+            envFrom:
+            - secretRef:
+                name: mediawiki-keys
             command:
             - /bin/bash
             - -c
-            - php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php
+            - php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet 
           restartPolicy: OnFailure

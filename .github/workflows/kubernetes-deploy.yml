@@ -20,68 +20,12 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG_DEV }}
 
-      - name: CLOUDFLARE_APITOKEN Secret
+      - name: MEDIAWIKI Secrets
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
-          secret-name: cloudflare-apitoken
-          data: ${{ secrets.CLOUDFLARE_APITOKEN }}
-          
-      - name: CLOUDFLARE_ZONEID Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: cloudflare-zoneid
-          data: ${{ secrets.CLOUDFLARE_ZONEID }}
-
-      - name: DISCORD_WEBHOOKURL Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: discord-webhookurl
-          data: ${{ secrets.DISCORD_WEBHOOKURL }}
-
-      - name: FLICKR_APIKEY Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: flickr-apikey
-          data: ${{ secrets.FLICKR_APIKEY }}
-
-      - name: HCAPTCHA_SECRETKEY Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: hcaptcha-secretkey
-          data: ${{ secrets.HCAPTCHA_SECRETKEY }}
-
-      - name: HCAPTCHA_SITEKEY Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: hcaptcha-sitekey
-          data: ${{ secrets.HCAPTCHA_SITEKEY }}
-
-      - name: MEDIAWIKI_SECRETKEY Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: mediawiki-secretkey
-          data: ${{ secrets.MEDIAWIKI_SECRETKEY }}
-
-      - name: MEDIAWIKI_UPGRADEKEY Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: mediawiki-upgradekey
-          data: ${{ secrets.MEDIAWIKI_UPGRADEKEY }}
-
-      - name: PRD_DB_PASSWORD Secret
-        uses: Azure/k8s-create-secret@v4.0
-        with:
-          secret-type: 'generic'
-          secret-name: prd-db-password
-          data: ${{ secrets.PRD_DB_PASSWORD }}
+          secret-name: mediawiki-keys
+          data: ${{ secrets.MEDIAWIKI_KEYS }}
 
       - name: PLAUSIBLE_POSTGRES Secret
         uses: Azure/k8s-create-secret@v4.0
@@ -109,14 +53,14 @@ jobs:
         with:
           secret-type: 'generic'
           secret-name: images-keys
-          data: ${{ secrets.IMAGES_KEYS }}
+          data: ${{ secrets.IMAGES_READ_KEYS }}
 
       - name: SITEMAP_KEYS Secret
         uses: Azure/k8s-create-secret@v4.0
         with:
           secret-type: 'generic'
           secret-name: sitemap-keys
-          data: ${{ secrets.SITEMAP_READ_KEYS }}
+          data: ${{ secrets.SITEMAP_KEYS }}
 
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v4.9

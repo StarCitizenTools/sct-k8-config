@@ -29,62 +29,11 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "400m"
-        env:
-        - name: CLOUDFLARE_APITOKEN
-          valueFrom:
-            secretKeyRef:
-              name: cloudflare-apitoken
-              key: cloudflare_apitoken
-        - name: CLOUDFLARE_ZONEID
-          valueFrom:
-            secretKeyRef:
-              name: cloudflare-zoneid
-              key: cloudflare_zoneid
-        - name: DISCORD_WEBHOOKURL
-          valueFrom:
-            secretKeyRef:
-              name: discord-webhookurl
-              key: discord_webhookurl
-        - name: FLICKR_APIKEY
-          valueFrom:
-            secretKeyRef:
-              name: flickr-apikey
-              key: flickr_apikey
-        - name: HCAPTCHA_SECRETKEY
-          valueFrom:
-            secretKeyRef:
-              name: hcaptcha-secretkey
-              key: hcaptcha_secretkey
-        - name: HCAPTCHA_SITEKEY
-          valueFrom:
-            secretKeyRef:
-              name: hcaptcha-sitekey
-              key: hcaptcha_sitekey
-        - name: MEDIAWIKI_SECRETKEY
-          valueFrom:
-            secretKeyRef:
-              name: mediawiki-secretkey
-              key: mw_secretkey
-        - name: MEDIAWIKI_UPGRADEKEY
-          valueFrom:
-            secretKeyRef:
-              name: mediawiki-upgradekey
-              key: mw_upgradekey
-        - name: PRD_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: prd-db-password
-              key: db_password
-        - name: IMAGES_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: images-keys
-              key: IMAGES_ACCESS_KEY
-        - name: IMAGES_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: images-keys
-              key: IMAGES_SECRET_KEY
+        envFrom:
+        - secretRef:
+            name: mediawiki-keys
+        - secretRef:
+            name: images-keys
 
       - name: jobchron
         image: starcitizentools/mediawiki:jobrunner-v2.0.0
@@ -97,11 +46,8 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "50m"
-        env:
-        - name: PRD_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: prd-db-password
-              key: db_password
+        envFrom:
+        - secretRef:
+            name: mediawiki-keys
         - name: RUNNER_TYPE
           value: Chron
