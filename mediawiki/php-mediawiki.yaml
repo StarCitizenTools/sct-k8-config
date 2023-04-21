@@ -47,3 +47,7 @@ spec:
             name: mediawiki-keys
         - secretRef:
             name: images-keys
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --quiet"]
