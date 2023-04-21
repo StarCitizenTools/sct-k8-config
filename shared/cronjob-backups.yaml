@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: internal-kubectl
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modify-pods
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+    verbs:
+      - create
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modify-pods-to-sa
+subjects:
+  - kind: ServiceAccount
+    name: internal-kubectl
+roleRef:
+  kind: Role
+  name: modify-pods
+  apiGroup: rbac.authorization.k8s.io
+
+---  
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-mariadb-backup
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-mariadb-backup
+            image: d3fk/mysql-s3-backup:stable
+            args:
+            - sh
+            - -c
+            - mysqldump -u root -h mariadb-service.default.svc.cluster.local --single-transaction --password=${MARIADB_ROOT_PASSWORD} scw_PROD > /tmp/dump/databasebackup$(date +%Y-%m-%d).sql && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).sql s3://sct-backups/DB/MEDIAWIKI/ 
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp/dump/
+            - name: s3-config-vol
+              mountPath: /root/.s3cfg
+              subPath: .s3cfg
+            envFrom:
+            - secretRef:
+                name: backup-keys
+            env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prd-db-password
+                  key: db_password
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
+          - name: s3-config-vol
+            configMap:
+              name: s3-config
+              items:
+              - key: ".s3cfg"
+                path: ".s3cfg"
+          restartPolicy: Never
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-clickhouse-backup
+spec:
+  schedule: "45 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: internal-kubectl
+          containers:
+          - name: cronjob-clickhouse-backup
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c",  "kubectl exec --stdin clickhouse-statefulset-0 -- /bin/bash -c 'sh /var/lib/backup.sh'"]
+          restartPolicy: OnFailure
+          
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-postgres-backup
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cronjob-postgres-backup
+            image: starcitizentools/postgres-s3cmd:v0.0.1
+            args:
+            - sh
+            - -c
+            - PGPASSWORD=${POSTGRES_PASSWORD} pg_dump -U ${POSTGRES_USER} -h postgres-service.default.svc.cluster.local ${POSTGRES_DB} > /tmp/dump/databasebackup$(date +%Y-%m-%d).dump && s3cmd put --access_key=${BACKUP_ACCESS_KEY} --secret_key=${BACKUP_SECRET_KEY} --ssl /tmp/dump/databasebackup$(date +%Y-%m-%d).dump s3://sct-backups/DB/POSTGRES/ 
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp/dump/
+            - name: s3-config-vol
+              mountPath: /root/.s3cfg
+              subPath: .s3cfg
+            envFrom:
+            - secretRef:
+                name: backup-keys
+            - secretRef:
+                name: plausible-postgres
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
+          - name: s3-config-vol
+            configMap:
+              name: s3-config
+              items:
+              - key: ".s3cfg"
+                path: ".s3cfg"
+          restartPolicy: Never
