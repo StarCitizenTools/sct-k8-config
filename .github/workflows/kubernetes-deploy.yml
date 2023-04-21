@@ -26,6 +26,13 @@ jobs:
           secret-type: 'generic'
           secret-name: mediawiki-keys
           data: ${{ secrets.MEDIAWIKI_KEYS }}
+          
+      - name: PRD_DB_PASSWORD Secret
+        uses: Azure/k8s-create-secret@v4.0
+        with:
+          secret-type: 'generic'
+          secret-name: prd-db-password
+          data: ${{ secrets.PRD_DB_PASSWORD }}
 
       - name: PLAUSIBLE_POSTGRES Secret
         uses: Azure/k8s-create-secret@v4.0

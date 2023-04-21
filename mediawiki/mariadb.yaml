@@ -66,7 +66,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: prd-db-password
-                  key: db_password
+                  key: PRD_DB_PASSWORD
             - name: MARIADB_DATABASE
               value: scw_PROD
           volumeMounts:

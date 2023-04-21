@@ -65,6 +65,8 @@ spec:
         - secretRef:
             name: mediawiki-keys
         - secretRef:
+            name: prd-db-password
+        - secretRef:
             name: images-keys
         volumeMounts:
         - name: smw
@@ -83,6 +85,8 @@ spec:
         envFrom:
         - secretRef:
             name: mediawiki-keys
+        - secretRef:
+            name: prd-db-password
         env:
         - name: RUNNER_TYPE
           value: Chron

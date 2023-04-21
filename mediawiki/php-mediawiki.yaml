@@ -47,6 +47,8 @@ spec:
             name: mediawiki-keys
         - secretRef:
             name: images-keys
+        - secretRef:
+            name: prd-db-password
         lifecycle:
           postStart:
             exec:
