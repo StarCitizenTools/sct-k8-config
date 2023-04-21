@@ -96,7 +96,7 @@ spec:
         command:
         - /bin/sh
         - -c
-        - kubectl cp php-mediawiki:/var/www/mediawiki/extenions/SemanticMediawiki/.smw.json /usr/local/smw/.smw.json
+        - kubectl cp php-mediawiki:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
         volumeMounts:
           - name: smw
             mountPath:  /usr/local/smw
