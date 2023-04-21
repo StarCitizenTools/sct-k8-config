@@ -44,8 +44,6 @@ spec:
             cpu: "2"
         envFrom:
         - secretRef:
-            name: backup-keys
-        - secretRef:
             name: mediawiki-keys
         - secretRef:
             name: images-keys
