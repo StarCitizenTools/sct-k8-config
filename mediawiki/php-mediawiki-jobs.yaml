@@ -19,6 +19,7 @@ spec:
       serviceAccountName: internal-kubectl
       securityContext:
         fsGroup: 33
+        runAsUser: 33
       containers:
       - name: jobrunner
         image: starcitizentools/mediawiki:smw-jobrunner-v1.0.2
