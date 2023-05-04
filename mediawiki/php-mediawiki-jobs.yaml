@@ -21,7 +21,7 @@ spec:
         fsGroup: 33
       containers:
       - name: jobrunner
-        image: starcitizentools/mediawiki:smw-jobrunner-v1.0.1
+        image: starcitizentools/mediawiki:smw-jobrunner-v1.0.2
         command: ["/bin/sh"]
         args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
         resources:
@@ -42,7 +42,7 @@ spec:
         - name: smw
           mountPath: /usr/local/smw
       - name: jobchron
-        image: starcitizentools/mediawiki:smw-jobrunner-v1.0.1
+        image: starcitizentools/mediawiki:smw-jobrunner-v1.0.2
         command: ["/bin/sh"]
         args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
         resources:
@@ -66,10 +66,10 @@ spec:
         command:
         - /bin/sh
         - -c
-        - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
+        - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json 
         volumeMounts:
           - name: smw
-            mountPath:  /usr/local/smw
+            mountPath: /usr/local/smw
       volumes:
       - name: smw
         emptyDir: {}
