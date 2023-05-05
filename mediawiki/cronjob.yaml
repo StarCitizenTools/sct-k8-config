@@ -13,7 +13,7 @@ spec:
         spec:
           containers:
           - name: cronjob-daily
-            image: starcitizentools/mediawiki:139-v2.1.1
+            image: starcitizentools/mediawiki:smw-v0.0.7
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -32,9 +32,9 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cronjob-weekly
+  name: cronjob-biweekly
 spec:
-  schedule: "0 8 * * 1"
+  schedule: "0 8 1,15 * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
@@ -44,7 +44,7 @@ spec:
         spec:
           containers:
           - name: cronjob-weekly
-            image: starcitizentools/mediawiki:139-v2.1.1
+            image: starcitizentools/mediawiki:smw-v0.0.7
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -74,7 +74,7 @@ spec:
         spec:
           containers:
           - name: cronjob-monthly
-            image: starcitizentools/mediawiki:139-v2.1.1
+            image: starcitizentools/mediawiki:smw-v0.0.7
             envFrom:
             - secretRef:
                 name: mediawiki-keys
