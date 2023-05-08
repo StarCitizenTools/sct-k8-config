@@ -88,8 +88,9 @@ spec:
                 name: prd-db-password
             - secretRef:
                 name: images-keys
-            command:
-            - /bin/bash
+            command: ["/bin/sh"]
+            args:
             - -c
-            - php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet 
+            - >-
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet 
           restartPolicy: OnFailure
