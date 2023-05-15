@@ -131,7 +131,7 @@ data:
       
       # Cache control
      
-      location ~* /resources/.*\.woff2* {
+      location ~* .*/resources/.*\.woff2* {
         expires 30d;
         add_header Cache-Control "public, no-transform";
         add_header X-XSS-Protection "1; mode=block";
