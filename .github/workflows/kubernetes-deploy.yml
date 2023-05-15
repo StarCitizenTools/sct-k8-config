@@ -18,7 +18,7 @@ jobs:
         with:
           cluster-type: generic
           method: kubeconfig
-          kubeconfig: ${{ secrets.KUBECONFIG_DEV }}
+          kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: MEDIAWIKI Secrets
         uses: Azure/k8s-create-secret@v4.0
@@ -60,7 +60,7 @@ jobs:
         with:
           secret-type: 'generic'
           secret-name: images-keys
-          data: ${{ secrets.IMAGES_READ_KEYS }}
+          data: ${{ secrets.IMAGES_KEYS }}
 
       - name: SITEMAP_KEYS Secret
         uses: Azure/k8s-create-secret@v4.0
@@ -75,6 +75,7 @@ jobs:
           # Path to the manifest files which will be used for deployment.
           manifests: |
             mediawiki
+            plausible
             shared
           strategy: basic
           action: deploy

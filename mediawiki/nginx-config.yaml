@@ -6,7 +6,7 @@ data:
   config : |
     server {
     	listen 0.0.0.0:80;
-      server_name dev.starcitizen.tools;
+      server_name starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
 
