@@ -38,10 +38,10 @@ spec:
         resources:
           requests:
             memory: "64Mi"
-            cpu: "150m"
+            cpu: "350m"
           limits:
             memory: "768Mi"
-            cpu: "2"
+            cpu: "3"
         envFrom:
         - secretRef:
             name: mediawiki-keys
