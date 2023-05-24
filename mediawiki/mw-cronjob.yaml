@@ -13,7 +13,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-daily
-            image: starcitizentools/mediawiki:smw-v1.1.0
+            image: starcitizentools/mediawiki:smw-v1.1.2
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -48,7 +48,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-biweekly
-            image: starcitizentools/mediawiki:smw-v1.1.0
+            image: starcitizentools/mediawiki:smw-v1.1.2
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -80,7 +80,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-monthly
-            image: starcitizentools/mediawiki:smw-v1.1.0
+            image: starcitizentools/mediawiki:smw-v1.1.2
             envFrom:
             - secretRef:
                 name: mediawiki-keys
