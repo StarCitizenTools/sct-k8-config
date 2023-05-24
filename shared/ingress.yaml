@@ -8,7 +8,7 @@ data:
   ssl-buffer-size: "16K"
   use-gzip: "false"
   enable-brotli: "false"
-  ssl-redirect: "true"
+  ssl-redirect: "false"
   backend-protocol: "HTTP"
   enable-cors: "true"
   proxy-body-size: "64M"
