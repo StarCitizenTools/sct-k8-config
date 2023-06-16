@@ -38,7 +38,7 @@ spec:
             path: site.conf
       containers:
       - name: nginx
-        image: starcitizentools/nginx:v1.1.1
+        image: starcitizentools/nginx:v1.1.2
         ports:
          - containerPort: 80
         resources:
