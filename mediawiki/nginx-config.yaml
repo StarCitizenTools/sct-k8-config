@@ -70,7 +70,7 @@ data:
     	}
 
     	location /images {
-        rewrite ^/images/thumb/(.*webp)$ ^/images/thumb/webp/$1;
+        rewrite ^/images/thumb/(.*webp)$ /images/thumb/webp/$1;
     		# Separate location for images/ so .php execution won't apply
     		location ~ ^/images/thumb/(webp/)?(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
           expires 2h;
