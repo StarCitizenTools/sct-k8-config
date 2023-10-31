@@ -70,7 +70,6 @@ data:
     	}
 
     	location /images {
-        rewrite ^/images/thumb/(.*webp)$ /images/thumb/webp/$1;
     		# Separate location for images/ so .php execution won't apply
     		location ~ ^/images/thumb/(webp/)?(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
           expires 2h;
@@ -121,8 +120,8 @@ data:
     	# Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
     	location @thumb {
     		# Do a rewrite here so that thumb.php gets the correct arguments
-    		rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
         rewrite ^/images/thumb/webp/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
+    		rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
         rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
 
     		# Run the thumb.php script
