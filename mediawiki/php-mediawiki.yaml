@@ -40,7 +40,7 @@ spec:
             memory: "64Mi"
             cpu: "350m"
           limits:
-            memory: "768Mi"
+            memory: "1Gi"
             cpu: "3"
         envFrom:
         - secretRef:
