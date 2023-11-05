@@ -46,8 +46,8 @@ spec:
             memory: "128Mi"
             cpu: "50m"
           limits:
-            memory: "128Mi"
-            cpu: "500m"
+            memory: "512Mi"
+            cpu: "1500m"
         volumeMounts:
           - name: nginx-config-volume
             mountPath: /etc/nginx/conf.d
