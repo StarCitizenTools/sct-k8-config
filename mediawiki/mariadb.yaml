@@ -56,7 +56,7 @@ spec:
               name: mariadb-port
           resources:
             limits:
-              memory: "1Gi"
+              memory: "1.2Gi"
               cpu: "1000m"
             requests:
               memory: "128Mi"
