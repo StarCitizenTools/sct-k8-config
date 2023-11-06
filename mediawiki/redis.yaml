@@ -41,7 +41,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7.2.2-alpine
+          image: starcitizentools/redis:23.11.06.2
           command: ["redis-server"]
           ports:
             - containerPort: 6379
