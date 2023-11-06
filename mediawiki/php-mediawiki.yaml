@@ -39,9 +39,9 @@ spec:
           requests:
             memory: "64Mi"
             cpu: "350m"
-          # limits:
-            # memory: "1Gi"
-            # cpu: "3"
+          limits:
+            memory: "1.5Gi"
+            cpu: "2"
         envFrom:
         - secretRef:
             name: mediawiki-keys
