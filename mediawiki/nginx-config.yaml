@@ -44,7 +44,6 @@ data:
         
       # Security Headers
       add_header X-XSS-Protection "1; mode=block";
-      add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
       add_header X-Frame-Options "DENY";
       add_header Referrer-Policy "strict-origin-when-cross-origin";
       add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
@@ -75,7 +74,6 @@ data:
           expires 2h;
           add_header Cache-Control "public, no-transform";
           add_header X-XSS-Protection "1; mode=block";
-          add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
           add_header X-Frame-Options "DENY";
           add_header Referrer-Policy "strict-origin-when-cross-origin";
           add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
@@ -136,7 +134,6 @@ data:
         expires 30d;
         add_header Cache-Control "public, no-transform";
         add_header X-XSS-Protection "1; mode=block";
-        add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
         add_header X-Frame-Options "DENY";
         add_header Referrer-Policy "strict-origin-when-cross-origin";
         add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
@@ -147,7 +144,6 @@ data:
         expires 30d;
         add_header Cache-Control "public, no-transform";
         add_header X-XSS-Protection "1; mode=block";
-        add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
         add_header X-Frame-Options "DENY";
         add_header Referrer-Policy "strict-origin-when-cross-origin";
         add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
