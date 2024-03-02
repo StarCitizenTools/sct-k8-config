@@ -28,39 +28,39 @@ spec:
     requests:
       storage: 10Gi
 
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: postgres-statefulset
-  namespace: default
-  labels:
-    app: postgres
-spec:
-  serviceName: "postgres"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:12
-          envFrom:
-            - secretRef:
-                name: plausible-postgres
-          ports:
-            - containerPort: 5432
-              name: postgresdb
-          volumeMounts:
-            - name: pv-data
-              mountPath: /var/lib/postgresql/data
-              subPath: plausible-postgresql
-      volumes:
-        - name: pv-data
-          persistentVolumeClaim:
-            claimName: postgres-pvc 
+# ---
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: postgres-statefulset
+#   namespace: default
+#   labels:
+#     app: postgres
+# spec:
+#   serviceName: "postgres"
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: postgres
+#   template:
+#     metadata:
+#       labels:
+#         app: postgres
+#     spec:
+#       containers:
+#         - name: postgres
+#           image: postgres:12
+#           envFrom:
+#             - secretRef:
+#                 name: plausible-postgres
+#           ports:
+#             - containerPort: 5432
+#               name: postgresdb
+#           volumeMounts:
+#             - name: pv-data
+#               mountPath: /var/lib/postgresql/data
+#               subPath: plausible-postgresql
+#       volumes:
+#         - name: pv-data
+#           persistentVolumeClaim:
+#             claimName: postgres-pvc 

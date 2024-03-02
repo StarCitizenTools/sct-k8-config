@@ -9,40 +9,40 @@ spec:
   ports:
     - port: 8000
 
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: plausible
-  namespace: default
-spec:
-  selector:
-    matchLabels:
-      app: plausible
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: plausible
+#   namespace: default
+# spec:
+#   selector:
+#     matchLabels:
+#       app: plausible
 
-  template:
-    metadata:
-      labels:
-        app: plausible
-    spec:
-      containers:
-        - name: plausible
-          image: plausible/analytics:v2.0.0
-          command: ["/bin/sh"]
-          args:
-            [
-              "-c",
-              "sleep 10 && /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh db init-admin && /entrypoint.sh run",
-            ]
-          resources:
-            limits:
-              memory: "512Mi"
-              cpu: "250m"
-            requests:
-              memory: "64Mi"
-              cpu: "100m"
-          ports:
-            - containerPort: 8000
-          envFrom:
-            - secretRef:
-                name: plausible-config
+#   template:
+#     metadata:
+#       labels:
+#         app: plausible
+#     spec:
+#       containers:
+#         - name: plausible
+#           image: plausible/analytics:v2.0.0
+#           command: ["/bin/sh"]
+#           args:
+#             [
+#               "-c",
+#               "sleep 10 && /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh db init-admin && /entrypoint.sh run",
+#             ]
+#           resources:
+#             limits:
+#               memory: "512Mi"
+#               cpu: "250m"
+#             requests:
+#               memory: "64Mi"
+#               cpu: "100m"
+#           ports:
+#             - containerPort: 8000
+#           envFrom:
+#             - secretRef:
+#                 name: plausible-config
