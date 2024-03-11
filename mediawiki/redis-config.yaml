@@ -1130,7 +1130,7 @@ data:
     # limit for maxmemory so that there is some free RAM on the system for replica
     # output buffers (but this is not needed if the policy is 'noeviction').
     #
-    maxmemory 1000mb
+    maxmemory 500mb
 
     # MAXMEMORY POLICY: how Redis will select what to remove when maxmemory
     # is reached. You can select one from the following behaviors:
