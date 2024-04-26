@@ -67,6 +67,10 @@ data:
     		}
     	}
 
+      location ~* ^/(?:favicon|apple-touch-icon) {
+        root /resources/assets/favicon;
+      }
+
     	location /images {
     		# Separate location for images/ so .php execution won't apply
     		location ~ ^/images/thumb/(webp/)?(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
