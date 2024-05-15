@@ -4,5 +4,5 @@ metadata:
   name: mariadb-config
 data: 
   config : |
-  [mysqld]
-  innodb_buffer_pool_size = 960M
+    [mysqld]
+    innodb_buffer_pool_size = 960M
