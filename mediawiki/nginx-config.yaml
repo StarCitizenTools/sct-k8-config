@@ -48,9 +48,7 @@ data:
       # Security Headers
       add_header X-XSS-Protection "1; mode=block";
       add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';
-      add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
-      add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
-      
+
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
         include fastcgi_params;
@@ -111,6 +109,11 @@ data:
 
     	# Handling for the article path
     	location @mediawiki {
+        if ($upstream_http_content_type ~ "(text/html)|(text/javascript)") {
+          add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), interest-cohort=() , magnetometer=(), microphone=(), payment=(), usb=()";
+          add_header Feature-Policy "accelerometer 'none'; autoplay 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; payment 'none'; usb 'none'";
+        }
+
     		include fastcgi_params;
     		# article path should always be passed to index.php
     		fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
