@@ -39,6 +39,7 @@ spec:
       containers:
       - name: nginx
         image: starcitizentools/nginx:v1.2.1
+        command: [nginx-debug, '-g', 'daemon off;']
         ports:
          - containerPort: 80
         resources:
