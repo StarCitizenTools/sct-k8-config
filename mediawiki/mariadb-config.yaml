@@ -8,5 +8,5 @@ data:
     innodb_buffer_pool_size = 960M
     innodb_log_file_size=124M
     key_buffer_size=64K
-    performance_schema = on
-    ignore-db-dir=lost+found
+    performance_schema=on
+    ignore-db-dirs=lost+found
