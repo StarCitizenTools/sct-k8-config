@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: mariadb-config
 data: 
-  config : |
+  my.conf: |
     [mysqld]
     innodb_buffer_pool_size = 960M
     innodb_log_file_size=124M
