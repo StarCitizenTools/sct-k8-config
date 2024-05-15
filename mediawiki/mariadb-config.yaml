@@ -9,3 +9,4 @@ data:
     innodb_log_file_size=124M
     key_buffer_size=64K
     performance_schema = on
+    ignore-db-dir=lost+found
