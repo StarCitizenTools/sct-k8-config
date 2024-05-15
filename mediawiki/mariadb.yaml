@@ -72,7 +72,15 @@ spec:
           volumeMounts:
             - name: mariadb-pv
               mountPath: /var/lib/mysql
+            - name: nginx-config-volume
+              mountPath: /etc/mysql/conf.d
       volumes:
         - name: mariadb-pv
           persistentVolumeClaim:
             claimName: mariadb-pv-claim
+        - name: mariadb-config-volume
+          configMap:
+            name: mariadb-config
+            items:
+            - key: config
+              path: my.conf
