@@ -11,9 +11,6 @@ data:
       index index.php;
 
       client_max_body_size 64M;
-
-      mirror /mirror;
-      mirror_request_body off;
       
       location /mirror {
           # Use internal so that location is not available for direct requests
@@ -71,6 +68,9 @@ data:
       
     	# Location for the wiki's root
     	location / {
+        mirror /mirror;
+        mirror_request_body off;
+        
     		try_files $uri $uri/ @mediawiki;
     		# Do this inside of a location so it can be negated
     		location ~ \.php$ {
