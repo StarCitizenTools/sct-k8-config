@@ -87,7 +87,7 @@ spec:
             - name: mariadb-pv
               mountPath: /var/lib/mysql
             - name: mariadb-config-volume
-              mountPath: /etc/mysql
+              mountPath: /etc/mysql/conf.d
       volumes:
         - name: mariadb-pv
           persistentVolumeClaim:
@@ -97,4 +97,4 @@ spec:
             name: mariadb-config
             items:
             - key: config
-              path: my.conf
+              path: my.cnf
