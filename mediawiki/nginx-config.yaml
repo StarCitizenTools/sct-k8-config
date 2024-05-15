@@ -4,24 +4,16 @@ metadata:
   name: nginx-config
 data: 
   config : |
+    error_log /var/log/nginx/error.log debug;
     server {
     	listen 0.0.0.0:80;
       server_name starcitizen.tools;
       root /var/www/mediawiki;
       index index.php;
 
-      client_max_body_size 64M;
       
-      location /mirror {
-          # Use internal so that location is not available for direct requests
-          internal;
-          # Use small timeout not to wait for replies (this is not necessary)
-          proxy_read_timeout 1;
-          # Pass headers to logging server
-          proxy_pass http://127.0.0.1:6677;
-          # send original request uri in special header
-          proxy_set_header X-Original-URI $request_uri;
-      }
+
+      client_max_body_size 64M;
 
       # Compression
       gzip on;
@@ -68,9 +60,6 @@ data:
       
     	# Location for the wiki's root
     	location / {
-        mirror /mirror;
-        mirror_request_body off;
-        
     		try_files $uri $uri/ @mediawiki;
     		# Do this inside of a location so it can be negated
     		location ~ \.php$ {
