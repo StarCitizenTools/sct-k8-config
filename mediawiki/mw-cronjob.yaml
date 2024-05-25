@@ -25,6 +25,7 @@ spec:
             args:
             - -c
             - >-
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages.php &&
                 php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --quiet --shallow-update &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php --quiet &&
