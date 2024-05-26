@@ -69,7 +69,7 @@ data:
     	}
 
       location ~* ^/(?:favicon|apple-touch-icon) {
-        root /resources/assets/favicon;
+        root /var/www/mediawiki/resources/assets/favicon;
       }
 
     	location /images {
