@@ -11,8 +11,6 @@ data:
       root /var/www/mediawiki;
       index index.php;
 
-      
-
       client_max_body_size 64M;
 
       # Compression
@@ -51,7 +49,6 @@ data:
       add_header Permissions-Policy "camera=(), geolocation=(), microphone=()";
       add_header X-Content-Type-Options nosniff;
       add_header X-XSS-Protection "1; mode=block";
-      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload";
 
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
