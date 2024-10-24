@@ -25,6 +25,7 @@ spec:
             args:
             - -c
             - >-
+                php /var/www/mediawiki/maintenance/initSiteStats.php --update &&
                 php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --shallow-update &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php &&
@@ -91,6 +92,7 @@ spec:
             args:
             - -c
             - >-
+                php /var/www/mediawiki/maintenance/initSiteStats.php --update --active &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php  -d 100 &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --skip-import
           restartPolicy: OnFailure
