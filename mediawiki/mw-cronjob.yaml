@@ -125,7 +125,8 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/cleanupUploadStash.php
-                php /var/www/mediawiki/maintenance/cleanupWatchlist.php --fix
+                php /var/www/mediawiki/maintenance/cleanupUploadStash.php &&
+                php /var/www/mediawiki/maintenance/cleanupWatchlist.php --fix &&
+                php /var/www/mediawiki/maintenance/refreshLinks.php --dfn-only &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php
           restartPolicy: OnFailure
