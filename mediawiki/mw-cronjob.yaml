@@ -26,10 +26,10 @@ spec:
             - -c
             - >-
                 php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --quiet --shallow-update &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php --quiet &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildPropertyStatistics.php --quiet &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildConceptCache.php --quiet --update --create
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --shallow-update &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildPropertyStatistics.php &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildConceptCache.php --update --create
           restartPolicy: OnFailure
 
 ---
@@ -91,8 +91,8 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --quiet -d 100 &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --quiet --skip-import
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php  -d 100 &&
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --skip-import
           restartPolicy: OnFailure
 
 ---
@@ -125,5 +125,5 @@ spec:
             - >-
                 php /var/www/mediawiki/maintenance/cleanupUploadStash.php
                 php /var/www/mediawiki/maintenance/cleanupWatchlist.php --fix
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php
           restartPolicy: OnFailure
