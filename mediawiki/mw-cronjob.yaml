@@ -13,7 +13,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-daily
-            image: starcitizentools/mediawiki:smw-24.10.23.468
+            image: starcitizentools/mediawiki:smw-24.10.24.470
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -49,7 +49,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-tridaily
-            image: starcitizentools/mediawiki:smw-24.10.23.468
+            image: starcitizentools/mediawiki:smw-24.10.24.470
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -80,7 +80,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-biweekly
-            image: starcitizentools/mediawiki:smw-24.10.23.468
+            image: starcitizentools/mediawiki:smw-24.10.24.470
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -92,6 +92,12 @@ spec:
             args:
             - -c
             - >-
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Ancientpages &&
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Deadendpages &&
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Fewestrevisions &&
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Mostlinked &&
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Mostrevisions &&
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Wantedpages &&
                 php /var/www/mediawiki/maintenance/initSiteStats.php --update --active &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php  -d 100 &&
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --skip-import
@@ -113,7 +119,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-monthly
-            image: starcitizentools/mediawiki:smw-24.10.23.468
+            image: starcitizentools/mediawiki:smw-24.10.24.470
             envFrom:
             - secretRef:
                 name: mediawiki-keys
