@@ -13,7 +13,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-daily
-            image: starcitizentools/mediawiki:smw-24.05.28.285
+            image: starcitizentools/mediawiki:smw-24.10.23.468
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -48,7 +48,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-tridaily
-            image: starcitizentools/mediawiki:smw-24.05.28.285
+            image: starcitizentools/mediawiki:smw-24.10.23.468
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -60,7 +60,7 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages.php
+                php /var/www/mediawiki/maintenance/updateSpecialPages.php
           restartPolicy: OnFailure
 
 ---
@@ -79,7 +79,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-biweekly
-            image: starcitizentools/mediawiki:smw-24.05.28.285
+            image: starcitizentools/mediawiki:smw-24.10.23.468
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -111,7 +111,7 @@ spec:
         spec:
           containers:
           - name: cronjob-mw-monthly
-            image: starcitizentools/mediawiki:smw-24.05.28.285
+            image: starcitizentools/mediawiki:smw-24.10.23.468
             envFrom:
             - secretRef:
                 name: mediawiki-keys
@@ -123,5 +123,5 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet 
+                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet
           restartPolicy: OnFailure
