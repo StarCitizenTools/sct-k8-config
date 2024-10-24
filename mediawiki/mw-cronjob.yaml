@@ -124,5 +124,6 @@ spec:
             - -c
             - >-
                 php /var/www/mediawiki/maintenance/cleanupUploadStash.php
+                php /var/www/mediawiki/maintenance/cleanupWatchlist.php --fix
                 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php --quiet
           restartPolicy: OnFailure
