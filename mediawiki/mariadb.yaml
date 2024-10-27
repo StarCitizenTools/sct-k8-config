@@ -83,6 +83,8 @@ spec:
                   key: PRD_DB_PASSWORD
             - name: MARIADB_DATABASE
               value: scw_PROD
+            - name: MARIADB_AUTO_UPGRADE
+              value: true
           volumeMounts:
             - name: mariadb-pv
               mountPath: /var/lib/mysql
