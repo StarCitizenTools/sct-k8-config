@@ -84,7 +84,7 @@ spec:
             - name: MARIADB_DATABASE
               value: scw_PROD
             - name: MARIADB_AUTO_UPGRADE
-              value: true
+              value: "true"
           volumeMounts:
             - name: mariadb-pv
               mountPath: /var/lib/mysql
