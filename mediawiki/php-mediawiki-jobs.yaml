@@ -25,6 +25,7 @@ spec:
         image: starcitizentools/mediawiki:smw-jobrunner-latest
         command: ["/bin/sh"]
         args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
+        imagePullPolicy: Always
         resources:
           requests:
             memory: "128Mi"
