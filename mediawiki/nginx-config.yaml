@@ -43,13 +43,6 @@ data:
         text/plain
         text/xml;
 
-      # Security Headers
-      # Kept because of browser support
-      add_header Feature-Policy "camera 'none'; geolocation 'none'; microphone 'none'";
-      add_header Permissions-Policy "camera=(), geolocation=(), microphone=()";
-      add_header X-Content-Type-Options nosniff;
-      add_header X-XSS-Protection "1; mode=block";
-
       location /rest.php {
         try_files $uri $uri/ /rest.php?$args;
         include fastcgi_params;
