@@ -38,7 +38,7 @@ spec:
             path: site.conf
       containers:
       - name: nginx
-        image: starcitizentools/nginx:24.12.10.127
+        image: starcitizentools/nginx:24.12.10.129
         # command: [nginx-debug, '-g', 'daemon off;']
         ports:
          - containerPort: 80
