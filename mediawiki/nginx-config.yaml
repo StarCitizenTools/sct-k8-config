@@ -124,7 +124,6 @@ data:
       # Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
       location @thumb {
         # Do a rewrite here so that thumb.php gets the correct arguments
-        rewrite ^/images/thumb/webp/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
         rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
         rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
 
