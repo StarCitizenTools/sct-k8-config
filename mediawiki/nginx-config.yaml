@@ -1,135 +1,139 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nginx-config
+    name: nginx-config
 data:
-  config: |
-    # error_log /var/log/nginx/debug.log debug;
-    server {
-      listen 0.0.0.0:80;
-      server_name starcitizen.tools;
-      root /var/www/mediawiki;
-      index index.php;
+    config: |
+        # error_log /var/log/nginx/debug.log debug;
+        server {
+          listen 0.0.0.0:80;
+          server_name starcitizen.tools;
+          root /var/www/mediawiki;
+          index index.php;
 
-      client_max_body_size 64M;
+          client_max_body_size 64M;
 
-      # Compression
-      gzip on;
-      gzip_disable "msie6";
-      gzip_vary on;
-      gzip_proxied any;
-      gzip_comp_level 6;
-      gzip_buffers 16 8k;
-      gzip_http_version 1.1;
-      gzip_min_length 256;
-      gzip_types
-        application/atom+xml
-        application/geo+json
-        application/javascript
-        application/x-javascript
-        application/json
-        application/ld+json
-        application/manifest+json
-        application/rdf+xml
-        application/rss+xml
-        application/xhtml+xml
-        application/xml
-        font/eot
-        font/otf
-        font/ttf
-        image/svg+xml
-        text/css
-        text/javascript
-        text/plain
-        text/xml;
+          # Compression
+          gzip on;
+          gzip_disable "msie6";
+          gzip_vary on;
+          gzip_proxied any;
+          gzip_comp_level 6;
+          gzip_buffers 16 8k;
+          gzip_http_version 1.1;
+          gzip_min_length 256;
+          gzip_types
+            application/atom+xml
+            application/geo+json
+            application/javascript
+            application/x-javascript
+            application/json
+            application/ld+json
+            application/manifest+json
+            application/rdf+xml
+            application/rss+xml
+            application/xhtml+xml
+            application/xml
+            font/eot
+            font/otf
+            font/ttf
+            image/svg+xml
+            text/css
+            text/javascript
+            text/plain
+            text/xml;
 
-      location /rest.php {
-        try_files $uri $uri/ /rest.php?$args;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
-        fastcgi_pass php-service.default.svc.cluster.local:9000;
-      }
-      
-      # Location for the wiki's root
-      location / {
-        try_files $uri $uri/ @mediawiki;
-        # Do this inside of a location so it can be negated
-        location ~ \.php$ {
-          try_files $uri $uri/ =404; # Don't let php execute non-existent php files
-          include fastcgi_params;
-          fastcgi_pass php-service.default.svc.cluster.local:9000;
-          fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+          location /rest.php {
+            try_files $uri $uri/ /rest.php?$args;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
+            fastcgi_pass php-service.default.svc.cluster.local:9000;
+          }
+          
+          # Location for the wiki's root
+          location / {
+            try_files $uri $uri/ @mediawiki;
+            # Do this inside of a location so it can be negated
+            location ~ \.php$ {
+              try_files $uri $uri/ =404; # Don't let php execute non-existent php files
+              include fastcgi_params;
+              fastcgi_pass php-service.default.svc.cluster.local:9000;
+              fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            }
+          }
+
+          # Redirect to domain root icons
+          location ~* ^/(?:favicon|apple-touch-icon) {
+            root /var/www/mediawiki/resources/assets/favicon;
+          }
+
+          location /images {
+            # Separate location for images/ so .php execution won't apply
+            location ~ ^/images/thumb/(webp/)?(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
+              expires 2h;
+              add_header Cache-Control "public, no-transform";
+            
+              # Thumbnail handler for MediaWiki
+              # This location only matches on a thumbnail's url
+              # If the file does not exist we use @thumb to run the thumb.php script
+              try_files $uri $uri/ @thumb;
+            }
+          }
+
+          location /images/deleted {
+            # Deny access to deleted images folder
+            deny all;
+          }
+
+          # Assets, scripts and styles from skins and extensions
+          location ~ ^/(skins|extensions)/.+\.(css|js|gif|jpg|jpeg|png|svg|wasm|ttf|woff|woff2)$ {
+              try_files $uri 404;
+              add_header Cache-Control "public";
+              expires 30d;
+          }
+
+          location ~ ^/(skins|extensions)/.+\.php$ {
+            deny all;
+          }
+
+          # License and credits files
+          location ~ ^/(COPYING|CREDITS)$ {
+              default_type text/plain;
+          }
+
+          # Deny access to folders MediaWiki has a .htaccess deny in
+          location /cache       { deny all; }
+          location /languages   { deny all; }
+          location /maintenance { deny all; }
+          location /serialized  { deny all; }
+
+          # Just in case, hide .svn and .git too
+          location ~ /.(svn|git)(/|$) { deny all; }
+
+          # Hide any .htaccess files
+          location ~ /.ht { deny all; }
+
+          # Uncomment the following code if you wish to hide the installer/updater
+          ## Deny access to the installer
+          location /mw-config { deny all; }
+
+          # Handling for the article path
+          location @mediawiki {
+            include fastcgi_params;
+            # article path should always be passed to index.php
+            fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
+            fastcgi_pass php-service.default.svc.cluster.local:9000;
+          }
+
+          # Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
+          location @thumb {
+            # Do a rewrite here so that thumb.php gets the correct arguments
+            rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
+            rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
+
+            # Run the thumb.php script
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
+            fastcgi_pass php-service.default.svc.cluster.local:9000;
+          }
         }
-      }
-
-      # Redirect to domain root icons
-      location ~* ^/(?:favicon|apple-touch-icon) {
-        root /var/www/mediawiki/resources/assets/favicon;
-      }
-
-      location /images {
-        # Separate location for images/ so .php execution won't apply
-        location ~ ^/images/thumb/(webp/)?(archive/)?[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ {
-          expires 2h;
-          add_header Cache-Control "public, no-transform";
-        
-          # Thumbnail handler for MediaWiki
-          # This location only matches on a thumbnail's url
-          # If the file does not exist we use @thumb to run the thumb.php script
-          try_files $uri $uri/ @thumb;
-        }
-      }
-
-      location /images/deleted {
-        # Deny access to deleted images folder
-        deny	all;
-      }
-
-      # Assets, scripts and styles from skins and extensions
-      location ~ ^/(skins|extensions)/.+\.(css|js|gif|jpg|jpeg|png|svg|wasm|ttf|woff|woff2)$ {
-          try_files $uri 404;
-          add_header Cache-Control "public";
-          expires 30d;
-      }
-
-      # License and credits files
-      location ~ ^/(COPYING|CREDITS)$ {
-          default_type text/plain;
-      }
-
-      # Deny access to folders MediaWiki has a .htaccess deny in
-      location /cache       { deny all; }
-      location /languages   { deny all; }
-      location /maintenance { deny all; }
-      location /serialized  { deny all; }
-
-      # Just in case, hide .svn and .git too
-      location ~ /.(svn|git)(/|$) { deny all; }
-
-      # Hide any .htaccess files
-      location ~ /.ht { deny all; }
-
-      # Uncomment the following code if you wish to hide the installer/updater
-      ## Deny access to the installer
-      location /mw-config { deny all; }
-
-      # Handling for the article path
-      location @mediawiki {
-        include fastcgi_params;
-        # article path should always be passed to index.php
-        fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
-        fastcgi_pass php-service.default.svc.cluster.local:9000;
-      }
-
-      # Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
-      location @thumb {
-        # Do a rewrite here so that thumb.php gets the correct arguments
-        rewrite ^/images/thumb/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2;
-        rewrite ^/images/thumb/archive/[0-9a-f]/[0-9a-f][0-9a-f]/([^/]+)/([0-9]+)px-.*$ /thumb.php?f=$1&width=$2&archived=1;
-
-        # Run the thumb.php script
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
-        fastcgi_pass php-service.default.svc.cluster.local:9000;
-      }
-    }
