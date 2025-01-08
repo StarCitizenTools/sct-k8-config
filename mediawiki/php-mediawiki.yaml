@@ -32,7 +32,7 @@ spec:
         fsGroup: 33
       containers:
       - name: php-mediawiki
-        image: starcitizentools/mediawiki:smw-25.01.08.204
+        image: starcitizentools/mediawiki:smw-25.01.08.206
         ports:
          - containerPort: 9000
         resources:
