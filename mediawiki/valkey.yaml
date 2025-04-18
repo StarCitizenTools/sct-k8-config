@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Service
+metadata:
+    name: valkey-service
+spec:
+    selector:
+        app: valkey
+    ports:
+        - port: 6379
+          name: valkey-port
+    type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: valkey-pvc
+spec:
+    accessModes:
+        - ReadWriteOnce
+    resources:
+        requests:
+            storage: 1Gi
+    storageClassName: linode-block-storage-retain
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+    name: valkey-sts
+spec:
+    serviceName: valkey-service
+    replicas: 1
+    selector:
+        matchLabels:
+            app: valkey
+    template:
+        metadata:
+            labels:
+                app: valkey
+        spec:
+            containers:
+                - name: valkey
+                  image: valkey/valkey:8.1.0-alpine
+                  command:
+                      - valkey-server
+                      - '/usr/local/etc/valkey/valkey.conf'
+                  ports:
+                      - containerPort: 6379
+                        name: valkey
+                  resources:
+                      requests:
+                          memory: '128Mi'
+                          cpu: '100m'
+                      limits:
+                          memory: '3Gi'
+                          cpu: '1.5'
+                  volumeMounts:
+                      - name: valkey-pv
+                        mountPath: /data
+                      - name: valkey-config-volume
+                        mountPath: /usr/local/etc/valkey
+            volumes:
+                - name: valkey-pv
+                  persistentVolumeClaim:
+                      claimName: valkey-pvc
+                - name: valkey-config-volume
+                  configMap:
+                      name: valkey-config
+                      items:
+                          - key: config
+                            path: valkey.conf
