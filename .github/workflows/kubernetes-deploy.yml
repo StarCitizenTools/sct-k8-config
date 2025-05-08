@@ -79,3 +79,4 @@ jobs:
             shared
           strategy: basic
           action: deploy
+          force: true
