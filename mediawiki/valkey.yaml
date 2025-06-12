@@ -41,7 +41,7 @@ spec:
         spec:
             containers:
                 - name: valkey
-                  image: valkey/valkey:8.1.1-alpine
+                  image: valkey/valkey:8.1.2-alpine
                   command:
                       - valkey-server
                       - '/usr/local/etc/valkey/valkey.conf'
