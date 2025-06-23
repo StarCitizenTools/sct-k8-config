@@ -172,7 +172,7 @@ spec:
             emptyDir: {}
           containers:
           - name: cronjob-sitemap
-            image: starcitizentools/mediawiki:smw-25.06.12.319
+            image: starcitizentools/mediawiki:smw-25.06.23.320
             resources:
               limits:
                 memory: "512Mi"
