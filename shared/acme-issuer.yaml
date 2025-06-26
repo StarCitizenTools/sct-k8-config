@@ -12,7 +12,7 @@ spec:
     - dns01:
         cloudflare:
           email: webmaster@starcitizen.tools
-          apiKeySecretRef:
+          apiTokenSecretRef:
             name: cloudflare-api-key
             key: api-key
           
