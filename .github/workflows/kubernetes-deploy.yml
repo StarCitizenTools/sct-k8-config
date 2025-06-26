@@ -73,7 +73,7 @@ jobs:
         uses: Azure/k8s-create-secret@v5
         with:
           secret-type: 'generic'
-          secret-name: cloudflare-api-keys
+          secret-name: cloudflare-api-key
           data: ${{ secrets.CLOUDFLARE_API }}
 
       - name: Deploy to Kubernetes cluster
