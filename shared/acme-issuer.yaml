@@ -9,7 +9,10 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
-    - http01:
-        ingress:
-          class: nginx
+    - dns01:
+        cloudflare:
+          email: webmaster@starcitizen.tools
+          apiTokenSecretRef:
+            name: cloudflare-api-key
+            key: api-key
           
