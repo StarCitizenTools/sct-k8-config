@@ -10,7 +10,7 @@ The Kubernetes configuration powering https://starcitizen.tools
 ## Commands
 ### Cert Manager
 ```sh
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.10.1/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.1/cert-manager.yaml
 ```
 
 ### Elastic Search
