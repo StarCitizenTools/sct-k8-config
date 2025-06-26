@@ -69,6 +69,13 @@ jobs:
           secret-name: sitemap-keys
           data: ${{ secrets.SITEMAP_KEYS }}
 
+      - name: CLOUDFLARE_API Secret
+        uses: Azure/k8s-create-secret@v5
+        with:
+          secret-type: 'generic'
+          secret-name: cloudflare-api-keys
+          data: ${{ secrets.CLOUDFLARE_API }}
+
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v5
         with:

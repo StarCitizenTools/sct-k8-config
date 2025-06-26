@@ -50,7 +50,6 @@ metadata:
   namespace: default
   name: nginx-ingress
   annotations:
-  
     acme.cert-manager.io/http01-edit-in-place: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
