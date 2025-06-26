@@ -23,5 +23,5 @@ kubectl apply -f https://download.elastic.co/downloads/eck/2.5.0/operator.yaml
 ```sh
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
-helm install ingress-nginx ingress-nginx/ingress-nginx
+helm install -f ingress-values.yaml ingress-nginx ingress-nginx/ingress-nginx
 ```

@@ -1,0 +1,6 @@
+controller:
+  config:
+    use-proxy-protocol: "true"
+  service:
+    annotations:
+      service.beta.kubernetes.io/linode-loadbalancer-proxy-protocol: v2
