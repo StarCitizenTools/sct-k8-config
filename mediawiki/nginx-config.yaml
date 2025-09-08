@@ -109,10 +109,10 @@ data:
           location /serialized  { deny all; }
 
           # Just in case, hide .svn and .git too
-          location ~ /.(svn|git)(/|$) { deny all; }
+          location ~ /\.(svn|git)(/|$) { deny all; }
 
           # Hide any .htaccess files
-          location ~ /.ht { deny all; }
+          location ~ /\.ht { deny all; }
 
           # Uncomment the following code if you wish to hide the installer/updater
           ## Deny access to the installer
