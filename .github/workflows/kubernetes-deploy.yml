@@ -77,13 +77,20 @@ jobs:
           secret-name: cloudflare-api-key
           data: ${{ secrets.CLOUDFLARE_API }}
 
+      - name: Bake manifests
+        id: bake
+        uses: Azure/k8s-bake@v3
+        with:
+          renderEngine: kustomize
+          kustomizationPath: |
+            mediawiki
+            plausible
+            shared
+          
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v5
         with:
           # Path to the manifest files which will be used for deployment.
-          manifests: |
-            mediawiki
-            plausible
-            shared
+          manifests: ${{ steps.bake.outputs.manifestsBundle }}
           strategy: basic
           action: deploy

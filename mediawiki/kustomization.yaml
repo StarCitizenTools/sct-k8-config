@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - elasticsearch.yaml
+  - mariadb-config.yaml
+  - mariadb.yaml
+  - mw-cronjob.yaml
+  - nginx-config.yaml
+  - nginx.yaml
+  - php-mediawiki-jobs.yaml
+  - php-mediawiki.yaml
+  - valkey-config.yaml
+  - valkey.yaml
+
+images:
+  - name: starcitizentools/mediawiki:mediawiki-version
+    newName: starcitizentools/mediawiki
+    newTag: 'smw-25.09.24.392'
+  - name: starcitizentools/mediawiki:jobrunner-version
+    newName: starcitizentools/mediawiki
+    newTag: 'smw-jobrunner-25.08.18.371'
+  - name: starcitizentools/nginx:nginx-version
+    newName: starcitizentools/nginx
+    newTag: '25.09.21.384'
+  - name: valkey/valkey:valkey-version
+    newName: valkey/valkey
+    newTag: '8.1.3-alpine'
+  - name: mariadb:mariadb-version
+    newName: mariadb
+    newTag: '11.8.3'
