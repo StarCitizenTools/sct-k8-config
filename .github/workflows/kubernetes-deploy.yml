@@ -77,6 +77,16 @@ jobs:
           secret-name: cloudflare-api-key
           data: ${{ secrets.CLOUDFLARE_API }}
 
+      - name: Clean up MediaWiki pods stuck in terminating state
+        run: |
+          TERMINATING_PODS=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}')
+          if [ -n "$TERMINATING_PODS" ]; then
+            echo "Force deleting pods stuck in Terminating state: $TERMINATING_PODS"
+            kubectl delete pod $TERMINATING_PODS --grace-period=0 --force
+          else
+            echo "No pods found in Terminating state."
+          fi
+
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v5
         with:
