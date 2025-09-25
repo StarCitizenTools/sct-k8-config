@@ -20,6 +20,16 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
+      - name: Clean up MediaWiki pods stuck in terminating state
+        run: |
+          TERMINATING_PODS=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}')
+          if [ -n "$TERMINATING_PODS" ]; then
+            echo "Force deleting pods stuck in Terminating state: $TERMINATING_PODS"
+            kubectl delete pod $TERMINATING_PODS --grace-period=0 --force
+          else
+            echo "No pods found in Terminating state."
+          fi
+
       - name: MEDIAWIKI Secrets
         uses: Azure/k8s-create-secret@v5
         with:
@@ -87,37 +97,3 @@ jobs:
             shared
           strategy: basic
           action: deploy
-  debug:
-    runs-on: ubuntu-latest
-    needs: docker
-    if: failure()
-    steps:
-      - uses: azure/setup-kubectl@v4
-        id: install
-
-      - name: Kubernetes Set Context
-        uses: Azure/k8s-set-context@v4
-        with:
-          cluster-type: generic
-          method: kubeconfig
-          kubeconfig: ${{ secrets.KUBECONFIG }}
-      
-      - name: Get Pod Names
-        id: get-pod-names
-        run: |
-          POD_NAMES=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[*].metadata.name}')
-          echo "POD_NAMES=$POD_NAMES" >> $GITHUB_OUTPUT
-          
-      - name: Get Pod Logs
-        run: |
-          for pod in ${{ steps.get-pod-names.outputs.POD_NAMES }}; do
-            echo "--- Logs for $pod ---"
-            kubectl logs "$pod" --all-containers=true --tail=500 || echo "Could not get logs for $pod"
-          done
-
-      - name: Describe Pods
-        run: |
-          for pod in ${{ steps.get-pod-names.outputs.POD_NAMES }}; do
-            echo "--- Describe for $pod ---"
-            kubectl describe pod "$pod" || echo "Could not describe $pod"
-          done
