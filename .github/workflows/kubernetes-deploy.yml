@@ -102,16 +102,22 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
       
-      - name: Get Pod Name
-        id: get-pod-name
+      - name: Get Pod Names
+        id: get-pod-names
         run: |
-          POD_NAME=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[?(@.status.phase != "Running")].metadata.name}')
-          echo "POD_NAME=$POD_NAME" >> $GITHUB_OUTPUT
+          POD_NAMES=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[*].metadata.name}')
+          echo "POD_NAMES=$POD_NAMES" >> $GITHUB_OUTPUT
           
       - name: Get Pod Logs
         run: |
-          kubectl logs ${{ steps.get-pod-name.outputs.POD_NAME }}
+          for pod in ${{ steps.get-pod-names.outputs.POD_NAMES }}; do
+            echo "--- Logs for $pod ---"
+            kubectl logs "$pod" --all-containers=true --tail=500 || echo "Could not get logs for $pod"
+          done
 
-      - name: Describe Pod
+      - name: Describe Pods
         run: |
-          kubectl describe pod ${{ steps.get-pod-name.outputs.POD_NAME }}
+          for pod in ${{ steps.get-pod-names.outputs.POD_NAMES }}; do
+            echo "--- Describe for $pod ---"
+            kubectl describe pod "$pod" || echo "Could not describe $pod"
+          done
