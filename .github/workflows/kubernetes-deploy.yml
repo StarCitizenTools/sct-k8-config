@@ -20,16 +20,6 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
-      - name: Clean up MediaWiki pods stuck in terminating state
-        run: |
-          TERMINATING_PODS=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[?(@.metadata.deletionTimestamp)].metadata.name}')
-          if [ -n "$TERMINATING_PODS" ]; then
-            echo "Force deleting pods stuck in Terminating state: $TERMINATING_PODS"
-            kubectl delete pod $TERMINATING_PODS --grace-period=0 --force
-          else
-            echo "No pods found in Terminating state."
-          fi
-
       - name: MEDIAWIKI Secrets
         uses: Azure/k8s-create-secret@v5
         with:
