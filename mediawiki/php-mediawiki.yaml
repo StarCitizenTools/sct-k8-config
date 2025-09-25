@@ -28,24 +28,8 @@ spec:
       labels:
         app: php-mediawiki
     spec:
-      terminationGracePeriodSeconds: 300
       securityContext:
         fsGroup: 33
-      initContainers:
-      - name: smw-setup
-        image: starcitizentools/mediawiki:smw-25.09.24.392
-        command: ["/bin/sh", "-c", "timeout 300 php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php"]
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "350m"
-        envFrom:
-        - secretRef:
-            name: mediawiki-keys
-        - secretRef:
-            name: images-keys
-        - secretRef:
-            name: prd-db-password
       containers:
       - name: php-mediawiki
         image: starcitizentools/mediawiki:smw-25.09.24.392
@@ -65,3 +49,7 @@ spec:
             name: images-keys
         - secretRef:
             name: prd-db-password
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --quiet"]
