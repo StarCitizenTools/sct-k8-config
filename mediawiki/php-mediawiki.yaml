@@ -16,9 +16,9 @@ kind: Deployment
 metadata:
   name: php-mediawiki
 spec:
-  replicas: 1
   strategy:
-    type: Recreate
+    rollingUpdate:
+      maxSurge: 100%
   selector:
     matchLabels:
       app: php-mediawiki
@@ -28,6 +28,7 @@ spec:
       labels:
         app: php-mediawiki
     spec:
+      terminationGracePeriodSeconds: 300
       securityContext:
         fsGroup: 33
       containers:
