@@ -25,12 +25,12 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/initSiteStats.php --update &&
-                php /var/www/mediawiki/extensions/CirrusSearch/maintenance/UpdateSuggesterIndex.php &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php --shallow-update &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/disposeOutdatedEntities.php &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildPropertyStatistics.php &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildConceptCache.php --update --create
+                php /var/www/mediawiki/maintenance/run.php initSiteStats.php --update &&
+                php /var/www/mediawiki/maintenance/run.php CirrusSearch:UpdateSuggesterIndex &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --shallow-update &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:disposeOutdatedEntities &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
           restartPolicy: OnFailure
 
 ---
@@ -61,7 +61,7 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages
           restartPolicy: OnFailure
 
 ---
@@ -92,15 +92,15 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Ancientpages &&
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Deadendpages &&
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Fewestrevisions &&
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Mostlinked &&
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Mostrevisions &&
-                php /var/www/mediawiki/maintenance/updateSpecialPages.php --override --only=Wantedpages &&
-                php /var/www/mediawiki/maintenance/initSiteStats.php --update --active &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/rebuildData.php  -d 100 &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php --skip-import
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Ancientpages &&
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Deadendpages &&
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Fewestrevisions &&
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostlinked &&
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostrevisions &&
+                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Wantedpages &&
+                php /var/www/mediawiki/maintenance/run.php initSiteStats --update --active &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData -d 100 &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-import
           restartPolicy: OnFailure
 
 ---
@@ -131,8 +131,8 @@ spec:
             args:
             - -c
             - >-
-                php /var/www/mediawiki/maintenance/cleanupUploadStash.php &&
-                php /var/www/mediawiki/maintenance/cleanupWatchlist.php --fix &&
-                php /var/www/mediawiki/maintenance/refreshLinks.php --dfn-only &&
-                php /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/removeDuplicateEntities.php
+                php /var/www/mediawiki/maintenance/run.php cleanupUploadStash &&
+                php /var/www/mediawiki/maintenance/run.php cleanupWatchlist --fix &&
+                php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
+                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
           restartPolicy: OnFailure
