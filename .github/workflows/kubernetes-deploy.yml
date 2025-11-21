@@ -11,7 +11,7 @@ jobs:
       - uses: azure/setup-kubectl@v4
         id: install
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Kubernetes Set Context
         uses: Azure/k8s-set-context@v4
