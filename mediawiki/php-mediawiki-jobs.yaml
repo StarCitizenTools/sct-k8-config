@@ -21,57 +21,59 @@ spec:
         fsGroup: 33
         runAsUser: 33
       containers:
-      - name: jobrunner
-        image: starcitizentools/mediawiki:smw-jobrunner-26.03.16.482
-        command: ["/bin/sh"]
-        args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
-        imagePullPolicy: Always
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
-        envFrom:
-        - secretRef:
-            name: mediawiki-keys
-        - secretRef:
-            name: prd-db-password
-        - secretRef:
-            name: images-keys
-        volumeMounts:
-        - name: smw
-          mountPath: /usr/local/smw
-      - name: jobchron
-        image: starcitizentools/mediawiki:smw-jobrunner-26.03.16.482
-        command: ["/bin/sh"]
-        args: ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "10m"
-          limits:
-            memory: "128Mi"
-            cpu: "50m"
-        envFrom:
-        - secretRef:
-            name: mediawiki-keys
-        - secretRef:
-            name: prd-db-password
-        env:
-        - name: RUNNER_TYPE
-          value: Chron
+        - name: jobrunner
+          image: starcitizentools/mediawiki:smw-jobrunner-26.03.29.486
+          command: ["/bin/sh"]
+          args:
+            ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            - secretRef:
+                name: prd-db-password
+            - secretRef:
+                name: images-keys
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
+        - name: jobchron
+          image: starcitizentools/mediawiki:smw-jobrunner-26.03.29.486
+          command: ["/bin/sh"]
+          args:
+            ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "50m"
+          envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            - secretRef:
+                name: prd-db-password
+          env:
+            - name: RUNNER_TYPE
+              value: Chron
       initContainers:
-      - name: smw-setup-file
-        image: bitnami/kubectl:latest
-        command:
-        - /bin/sh
-        - -c
-        - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json 
-        volumeMounts:
-          - name: smw
-            mountPath: /usr/local/smw
+        - name: smw-setup-file
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
       volumes:
-      - name: smw
-        emptyDir: {}
+        - name: smw
+          emptyDir: {}

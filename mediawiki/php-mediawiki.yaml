@@ -7,9 +7,9 @@ spec:
     app: php-mediawiki
   type: ClusterIP
   ports:
-  - protocol: TCP
-    port: 9000
-    
+    - protocol: TCP
+      port: 9000
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,25 +31,30 @@ spec:
       securityContext:
         fsGroup: 33
       containers:
-      - name: php-mediawiki
-        image: starcitizentools/mediawiki:smw-26.03.18.483
-        ports:
-         - containerPort: 9000
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "2"
-          limits:
-            memory: "1.5Gi"
-            cpu: "6"
-        envFrom:
-        - secretRef:
-            name: mediawiki-keys
-        - secretRef:
-            name: images-keys
-        - secretRef:
-            name: prd-db-password
-        lifecycle:
-          postStart:
-            exec:
-              command: ["/bin/sh", "-c", "php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --quiet"]
+        - name: php-mediawiki
+          image: starcitizentools/mediawiki:smw-26.03.28.485
+          ports:
+            - containerPort: 9000
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "2"
+            limits:
+              memory: "1.5Gi"
+              cpu: "6"
+          envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            - secretRef:
+                name: images-keys
+            - secretRef:
+                name: prd-db-password
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  [
+                    "/bin/sh",
+                    "-c",
+                    "php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --quiet",
+                  ]

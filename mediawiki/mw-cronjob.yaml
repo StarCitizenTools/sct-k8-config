@@ -12,25 +12,25 @@ spec:
       template:
         spec:
           containers:
-          - name: cronjob-mw-daily
-            image: starcitizentools/mediawiki:smw-26.03.18.483
-            envFrom:
-            - secretRef:
-                name: mediawiki-keys
-            - secretRef:
-                name: prd-db-password
-            - secretRef:
-                name: images-keys
-            command: ["/bin/sh"]
-            args:
-            - -c
-            - >-
-                php /var/www/mediawiki/maintenance/run.php initSiteStats.php --update &&
-                php /var/www/mediawiki/maintenance/run.php CirrusSearch:UpdateSuggesterIndex &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --shallow-update &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:disposeOutdatedEntities &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
+            - name: cronjob-mw-daily
+              image: starcitizentools/mediawiki:smw-26.03.28.485
+              envFrom:
+                - secretRef:
+                    name: mediawiki-keys
+                - secretRef:
+                    name: prd-db-password
+                - secretRef:
+                    name: images-keys
+              command: ["/bin/sh"]
+              args:
+                - -c
+                - >-
+                  php /var/www/mediawiki/maintenance/run.php initSiteStats.php --update &&
+                  php /var/www/mediawiki/maintenance/run.php CirrusSearch:UpdateSuggesterIndex &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --shallow-update &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:disposeOutdatedEntities &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
           restartPolicy: OnFailure
 
 ---
@@ -48,20 +48,20 @@ spec:
       template:
         spec:
           containers:
-          - name: cronjob-mw-tridaily
-            image: starcitizentools/mediawiki:smw-26.03.18.483
-            envFrom:
-            - secretRef:
-                name: mediawiki-keys
-            - secretRef:
-                name: prd-db-password
-            - secretRef:
-                name: images-keys
-            command: ["/bin/sh"]
-            args:
-            - -c
-            - >-
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages
+            - name: cronjob-mw-tridaily
+              image: starcitizentools/mediawiki:smw-26.03.28.485
+              envFrom:
+                - secretRef:
+                    name: mediawiki-keys
+                - secretRef:
+                    name: prd-db-password
+                - secretRef:
+                    name: images-keys
+              command: ["/bin/sh"]
+              args:
+                - -c
+                - >-
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages
           restartPolicy: OnFailure
 
 ---
@@ -79,28 +79,28 @@ spec:
       template:
         spec:
           containers:
-          - name: cronjob-mw-biweekly
-            image: starcitizentools/mediawiki:smw-26.03.18.483
-            envFrom:
-            - secretRef:
-                name: mediawiki-keys
-            - secretRef:
-                name: prd-db-password
-            - secretRef:
-                name: images-keys
-            command: ["/bin/sh"]
-            args:
-            - -c
-            - >-
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Ancientpages &&
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Deadendpages &&
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Fewestrevisions &&
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostlinked &&
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostrevisions &&
-                php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Wantedpages &&
-                php /var/www/mediawiki/maintenance/run.php initSiteStats --update --active &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData -d 100 &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-import
+            - name: cronjob-mw-biweekly
+              image: starcitizentools/mediawiki:smw-26.03.28.485
+              envFrom:
+                - secretRef:
+                    name: mediawiki-keys
+                - secretRef:
+                    name: prd-db-password
+                - secretRef:
+                    name: images-keys
+              command: ["/bin/sh"]
+              args:
+                - -c
+                - >-
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Ancientpages &&
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Deadendpages &&
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Fewestrevisions &&
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostlinked &&
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostrevisions &&
+                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Wantedpages &&
+                  php /var/www/mediawiki/maintenance/run.php initSiteStats --update --active &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData -d 100 &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-import
           restartPolicy: OnFailure
 
 ---
@@ -118,21 +118,21 @@ spec:
       template:
         spec:
           containers:
-          - name: cronjob-mw-monthly
-            image: starcitizentools/mediawiki:smw-26.03.18.483
-            envFrom:
-            - secretRef:
-                name: mediawiki-keys
-            - secretRef:
-                name: prd-db-password
-            - secretRef:
-                name: images-keys
-            command: ["/bin/sh"]
-            args:
-            - -c
-            - >-
-                php /var/www/mediawiki/maintenance/run.php cleanupUploadStash &&
-                php /var/www/mediawiki/maintenance/run.php cleanupWatchlist --fix &&
-                php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
-                php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
+            - name: cronjob-mw-monthly
+              image: starcitizentools/mediawiki:smw-26.03.28.485
+              envFrom:
+                - secretRef:
+                    name: mediawiki-keys
+                - secretRef:
+                    name: prd-db-password
+                - secretRef:
+                    name: images-keys
+              command: ["/bin/sh"]
+              args:
+                - -c
+                - >-
+                  php /var/www/mediawiki/maintenance/run.php cleanupUploadStash &&
+                  php /var/www/mediawiki/maintenance/run.php cleanupWatchlist --fix &&
+                  php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
           restartPolicy: OnFailure
