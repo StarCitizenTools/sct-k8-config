@@ -102,17 +102,32 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
       
+      - name: Describe Deployments & ReplicaSets
+        run: |
+          for app in php-mediawiki php-mediawiki-jobs; do
+            echo "--- Deployment/$app ---"
+            kubectl describe deployment "$app" || echo "Could not describe deployment $app"
+            echo "--- ReplicaSets for $app ---"
+            kubectl get rs -l "app=$app" -o wide || echo "Could not get rs for $app"
+          done
+
+      - name: Recent Warning Events
+        run: |
+          kubectl get events --sort-by=.lastTimestamp --field-selector type!=Normal | tail -100 || true
+
       - name: Get Pod Names
         id: get-pod-names
         run: |
-          POD_NAMES=$(kubectl get pods -l app=php-mediawiki -o jsonpath='{.items[*].metadata.name}')
+          POD_NAMES=$(kubectl get pods -l 'app in (php-mediawiki,php-mediawiki-jobs)' -o jsonpath='{.items[*].metadata.name}')
           echo "POD_NAMES=$POD_NAMES" >> $GITHUB_OUTPUT
-          
+
       - name: Get Pod Logs
         run: |
           for pod in ${{ steps.get-pod-names.outputs.POD_NAMES }}; do
             echo "--- Logs for $pod ---"
             kubectl logs "$pod" --all-containers=true --tail=500 || echo "Could not get logs for $pod"
+            echo "--- Previous logs for $pod (if any) ---"
+            kubectl logs "$pod" --all-containers=true --previous --tail=500 2>/dev/null || echo "(no previous logs)"
           done
 
       - name: Describe Pods
