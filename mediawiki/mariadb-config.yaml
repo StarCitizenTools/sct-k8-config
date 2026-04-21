@@ -5,7 +5,7 @@ metadata:
 data: 
   config : |
     [mysqld]
-    innodb_buffer_pool_size = 960M
+    innodb_buffer_pool_size = 2G
     innodb_log_file_size=240M
     innodb_log_buffer_size=24M
     innodb_snapshot_isolation=off
