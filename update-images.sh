@@ -47,18 +47,25 @@ echo "  jobrunner:  ${JOBRUNNER_TAG}"
 echo "  nginx:      ${NGINX_TAG}"
 echo ""
 
+# Detect sed in-place flag (BSD sed needs '' suffix; GNU sed does not)
+if sed --version >/dev/null 2>&1; then
+  SED_INPLACE=(sed -i -E)
+else
+  SED_INPLACE=(sed -i '' -E)
+fi
+
 # Update mediawiki smw-* (exclude smw-jobrunner-* by matching smw- followed by a digit)
-sed -i '' -E "s|starcitizentools/mediawiki:smw-[0-9][^\"]*|starcitizentools/mediawiki:${MW_TAG}|g" \
+"${SED_INPLACE[@]}" "s|starcitizentools/mediawiki:smw-[0-9][^\"]*|starcitizentools/mediawiki:${MW_TAG}|g" \
   "$SCRIPT_DIR/mediawiki/php-mediawiki.yaml" \
   "$SCRIPT_DIR/mediawiki/mw-cronjob.yaml" \
   "$SCRIPT_DIR/shared/backup-cronjob.yaml"
 
 # Update mediawiki smw-jobrunner-*
-sed -i '' -E "s|starcitizentools/mediawiki:smw-jobrunner-[0-9][^\"]*|starcitizentools/mediawiki:${JOBRUNNER_TAG}|g" \
+"${SED_INPLACE[@]}" "s|starcitizentools/mediawiki:smw-jobrunner-[0-9][^\"]*|starcitizentools/mediawiki:${JOBRUNNER_TAG}|g" \
   "$SCRIPT_DIR/mediawiki/php-mediawiki-jobs.yaml"
 
 # Update nginx
-sed -i '' -E "s|starcitizentools/nginx:[0-9][^\"]*|starcitizentools/nginx:${NGINX_TAG}|g" \
+"${SED_INPLACE[@]}" "s|starcitizentools/nginx:[0-9][^\"]*|starcitizentools/nginx:${NGINX_TAG}|g" \
   "$SCRIPT_DIR/mediawiki/nginx.yaml"
 
 echo "Done. Updated manifests."
