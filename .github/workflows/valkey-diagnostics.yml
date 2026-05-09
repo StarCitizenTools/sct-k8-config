@@ -104,6 +104,30 @@ jobs:
             done
           '
 
+      - name: Page row from DB (touched / links_updated / latest)
+        env:
+          PAGE_ID: ${{ inputs.page_id }}
+        run: |
+          kubectl exec deploy/php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql \
+            --query="SELECT page_id, page_namespace, page_title, page_touched, page_links_updated, page_latest, page_is_redirect FROM page WHERE page_id = $PAGE_ID" \
+            2>&1 | grep -vE "^(Use of|Deprecated)" | head -20
+
+      - name: Recent MW logs filtered for ParserCache decisions
+        run: |
+          kubectl logs -l app=php-mediawiki --tail=2000 --all-containers 2>&1 \
+            | grep -iE "ParserCache|ParserOutputAccess|RejectParserCacheValue" \
+            | tail -50 \
+            || echo "(no matching log lines)"
+
+      - name: Loaded extensions (look for parser-cache-affecting ones)
+        run: |
+          kubectl exec deploy/php-mediawiki -- sh -c '
+            grep -E "^[^/]*wfLoad(Extension|Skin)\(" /var/www/mediawiki/LocalSettings.php \
+              | sed -E "s/.*wfLoad(Extension|Skin)\(\s*[\"'\'']([^\"'\'']+).*/\1: \2/" \
+              | sort -u
+          '
+
       - name: Count keys with duplicate option suffixes (suspected dedupe bug)
         run: |
           kubectl exec valkey-sts-0 -- sh -c '
