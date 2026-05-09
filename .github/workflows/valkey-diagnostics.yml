@@ -16,6 +16,23 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
+      - name: Node headroom for valkey pod
+        run: |
+          NODE=$(kubectl get pod valkey-sts-0 -o jsonpath='{.spec.nodeName}')
+          echo "valkey-sts-0 is on node: $NODE"
+          echo
+          echo "=== Node allocatable (total schedulable capacity) ==="
+          kubectl get node "$NODE" -o jsonpath='{.status.allocatable}' | tr ',' '\n'
+          echo
+          echo
+          echo "=== Allocated requests/limits on this node (sum of all pod requests) ==="
+          kubectl describe node "$NODE" \
+            | sed -n '/Allocated resources:/,/^Events:/p' \
+            | head -n -1
+          echo
+          echo "=== Live memory usage across all nodes ==="
+          kubectl top nodes 2>&1 || echo "(metrics-server unavailable)"
+
       - name: Memory pressure & eviction counters
         run: |
           kubectl exec valkey-sts-0 -- valkey-cli INFO memory \
