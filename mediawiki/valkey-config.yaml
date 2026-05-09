@@ -4,5 +4,5 @@ metadata:
     name: valkey-config
 data:
     config: |
-        maxmemory 500mb
+        maxmemory 2gb
         maxmemory-policy allkeys-lru
