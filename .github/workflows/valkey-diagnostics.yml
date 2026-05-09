@@ -2,6 +2,11 @@ name: Valkey Diagnostics
 
 on:
   workflow_dispatch:
+    inputs:
+      page_id:
+        description: 'MediaWiki page ID to probe (default: 509 / Hull B)'
+        required: false
+        default: '509'
 
 jobs:
   valkey-info:
@@ -65,4 +70,52 @@ jobs:
             valkey-cli --scan \
               | awk -F: "{print \$1\":\"\$2\":\"\$3}" \
               | sort | uniq -c | sort -rn | head -20
+          '
+
+      - name: Probe specific page (page id ${{ inputs.page_id }})
+        env:
+          PAGE_ID: ${{ inputs.page_id }}
+        run: |
+          echo "=== All pcache keys for page $PAGE_ID ==="
+          kubectl exec valkey-sts-0 -- valkey-cli --scan \
+            --pattern "*pcache*:${PAGE_ID}*"
+          echo
+          echo "=== idoptions for page $PAGE_ID (which option sets are tracked) ==="
+          kubectl exec valkey-sts-0 -- valkey-cli GET \
+            "scw_PROD-wiki:pcache:idoptions:${PAGE_ID}"
+          echo
+          echo
+          echo "=== Sizes / TTLs for each idhash variant of page $PAGE_ID ==="
+          kubectl exec valkey-sts-0 -- env PAGE_ID="$PAGE_ID" sh -c '
+            valkey-cli --scan --pattern "*pcache:idhash:${PAGE_ID}-*" | while read -r k; do
+              size=$(valkey-cli MEMORY USAGE "$k" 2>/dev/null)
+              ttl=$(valkey-cli TTL "$k" 2>/dev/null)
+              printf "%-120s size=%s ttl=%s\n" "$k" "$size" "$ttl"
+            done
+          '
+          echo
+          echo "=== Embedded saved-at timestamp from each idhash variant ==="
+          kubectl exec valkey-sts-0 -- env PAGE_ID="$PAGE_ID" sh -c '
+            valkey-cli --scan --pattern "*pcache:idhash:${PAGE_ID}-*" | while read -r k; do
+              ts=$(valkey-cli GET "$k" \
+                | grep -oE "Saved in parser cache.*revision id [0-9]+" | head -1)
+              echo "$k"
+              echo "  -> $ts"
+            done
+          '
+
+      - name: Count keys with duplicate option suffixes (suspected dedupe bug)
+        run: |
+          kubectl exec valkey-sts-0 -- sh -c '
+            total=$(valkey-cli --scan --pattern "*pcache:idhash:*" | wc -l)
+            dup_userlang=$(valkey-cli --scan --pattern "*pcache:idhash:*" \
+              | grep -cE "!userlang.*!userlang" || true)
+            dup_dateformat=$(valkey-cli --scan --pattern "*pcache:idhash:*" \
+              | grep -cE "!dateformat.*!dateformat" || true)
+            triple_userlang=$(valkey-cli --scan --pattern "*pcache:idhash:*" \
+              | grep -cE "!userlang.*!userlang.*!userlang" || true)
+            echo "total idhash keys:                   $total"
+            echo "with !userlang appearing 2+ times:   $dup_userlang"
+            echo "with !userlang appearing 3+ times:   $triple_userlang"
+            echo "with !dateformat appearing 2+ times: $dup_dateformat"
           '
