@@ -32,7 +32,16 @@ spec:
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
           restartPolicy: OnFailure
-
+      initContainers:
+        - name: smw-setup-file
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -136,3 +145,13 @@ spec:
                   php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
           restartPolicy: OnFailure
+      initContainers:
+        - name: smw-setup-file
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
