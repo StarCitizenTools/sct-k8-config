@@ -1,0 +1,51 @@
+name: Valkey Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  valkey-info:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Memory pressure & eviction counters
+        run: |
+          kubectl exec valkey-sts-0 -- valkey-cli INFO memory \
+            | grep -E "^(used_memory_human|used_memory_peak_human|maxmemory_human|maxmemory_policy):"
+          echo "---"
+          kubectl exec valkey-sts-0 -- valkey-cli INFO stats \
+            | grep -E "^(keyspace_hits|keyspace_misses|evicted_keys|expired_keys):"
+
+      - name: Total key count
+        run: kubectl exec valkey-sts-0 -- valkey-cli DBSIZE
+
+      - name: Parser cache key count
+        run: |
+          kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern '*pcache*' \
+            | wc -l
+
+      - name: Sample parser cache keys with sizes & TTLs
+        run: |
+          kubectl exec valkey-sts-0 -- sh -c '
+            valkey-cli --scan --pattern "*pcache*" | head -10 | while read -r k; do
+              size=$(valkey-cli MEMORY USAGE "$k" 2>/dev/null)
+              ttl=$(valkey-cli TTL "$k" 2>/dev/null)
+              printf "%-90s size=%s ttl=%s\n" "$k" "$size" "$ttl"
+            done
+          '
+
+      - name: Top key prefixes by count (where memory is going)
+        run: |
+          kubectl exec valkey-sts-0 -- sh -c '
+            valkey-cli --scan \
+              | awk -F: "{print \$1\":\"\$2\":\"\$3}" \
+              | sort | uniq -c | sort -rn | head -20
+          '
