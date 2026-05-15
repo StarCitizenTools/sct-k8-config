@@ -22,8 +22,6 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
-                - secretRef:
-                    name: oauth-keys
               volumeMounts:
                 - name: smw
                   mountPath: /usr/local/smw
@@ -75,8 +73,6 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
-                - secretRef:
-                    name: oauth-keys
               command: ["/bin/sh"]
               args:
                 - -c
@@ -108,8 +104,6 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
-                - secretRef:
-                    name: oauth-keys
               command: ["/bin/sh"]
               args:
                 - -c
@@ -150,8 +144,6 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
-                - secretRef:
-                    name: oauth-keys
               volumeMounts:
                 - name: smw
                   mountPath: /usr/local/smw

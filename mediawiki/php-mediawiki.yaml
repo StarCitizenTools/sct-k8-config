@@ -49,8 +49,6 @@ spec:
                 name: images-keys
             - secretRef:
                 name: prd-db-password
-            - secretRef:
-                name: oauth-keys
           lifecycle:
             postStart:
               exec:

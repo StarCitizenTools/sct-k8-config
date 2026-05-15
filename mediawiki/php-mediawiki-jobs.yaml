@@ -41,8 +41,6 @@ spec:
                 name: prd-db-password
             - secretRef:
                 name: images-keys
-            - secretRef:
-                name: oauth-keys
           volumeMounts:
             - name: smw
               mountPath: /usr/local/smw
@@ -63,8 +61,6 @@ spec:
                 name: mediawiki-keys
             - secretRef:
                 name: prd-db-password
-            - secretRef:
-                name: oauth-keys
           env:
             - name: RUNNER_TYPE
               value: Chron
