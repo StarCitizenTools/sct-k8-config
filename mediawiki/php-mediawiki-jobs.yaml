@@ -22,7 +22,7 @@ spec:
         runAsUser: 33
       containers:
         - name: jobrunner
-          image: starcitizentools/mediawiki:smw-jobrunner-26.05.14.531
+          image: starcitizentools/mediawiki:smw-jobrunner-26.05.15.532
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
@@ -41,11 +41,13 @@ spec:
                 name: prd-db-password
             - secretRef:
                 name: images-keys
+            - secretRef:
+                name: oauth-keys
           volumeMounts:
             - name: smw
               mountPath: /usr/local/smw
         - name: jobchron
-          image: starcitizentools/mediawiki:smw-jobrunner-26.05.14.531
+          image: starcitizentools/mediawiki:smw-jobrunner-26.05.15.532
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
@@ -61,6 +63,8 @@ spec:
                 name: mediawiki-keys
             - secretRef:
                 name: prd-db-password
+            - secretRef:
+                name: oauth-keys
           env:
             - name: RUNNER_TYPE
               value: Chron

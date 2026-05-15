@@ -14,7 +14,7 @@ spec:
           serviceAccountName: internal-kubectl
           containers:
             - name: cronjob-mw-daily
-              image: starcitizentools/mediawiki:smw-26.05.14.531
+              image: starcitizentools/mediawiki:smw-26.05.15.532
               envFrom:
                 - secretRef:
                     name: mediawiki-keys
@@ -22,6 +22,8 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
+                - secretRef:
+                    name: oauth-keys
               volumeMounts:
                 - name: smw
                   mountPath: /usr/local/smw
@@ -65,7 +67,7 @@ spec:
         spec:
           containers:
             - name: cronjob-mw-tridaily
-              image: starcitizentools/mediawiki:smw-26.05.14.531
+              image: starcitizentools/mediawiki:smw-26.05.15.532
               envFrom:
                 - secretRef:
                     name: mediawiki-keys
@@ -73,6 +75,8 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
+                - secretRef:
+                    name: oauth-keys
               command: ["/bin/sh"]
               args:
                 - -c
@@ -96,7 +100,7 @@ spec:
         spec:
           containers:
             - name: cronjob-mw-biweekly
-              image: starcitizentools/mediawiki:smw-26.05.14.531
+              image: starcitizentools/mediawiki:smw-26.05.15.532
               envFrom:
                 - secretRef:
                     name: mediawiki-keys
@@ -104,6 +108,8 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
+                - secretRef:
+                    name: oauth-keys
               command: ["/bin/sh"]
               args:
                 - -c
@@ -136,7 +142,7 @@ spec:
           serviceAccountName: internal-kubectl
           containers:
             - name: cronjob-mw-monthly
-              image: starcitizentools/mediawiki:smw-26.05.14.531
+              image: starcitizentools/mediawiki:smw-26.05.15.532
               envFrom:
                 - secretRef:
                     name: mediawiki-keys
@@ -144,6 +150,8 @@ spec:
                     name: prd-db-password
                 - secretRef:
                     name: images-keys
+                - secretRef:
+                    name: oauth-keys
               volumeMounts:
                 - name: smw
                   mountPath: /usr/local/smw

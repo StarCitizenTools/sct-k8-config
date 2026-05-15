@@ -26,7 +26,14 @@ jobs:
           secret-type: 'generic'
           secret-name: mediawiki-keys
           data: ${{ secrets.MEDIAWIKI_KEYS }}
-          
+
+      - name: OAUTH_KEYS Secret
+        uses: Azure/k8s-create-secret@v5
+        with:
+          secret-type: 'generic'
+          secret-name: oauth-keys
+          data: '{"OAUTH_PRIVATE_KEY": ${{ toJSON(secrets.OAUTH_PRIVATE_KEY) }}, "OAUTH_PUBLIC_KEY": ${{ toJSON(secrets.OAUTH_PUBLIC_KEY) }}}'
+
       - name: PRD_DB_PASSWORD Secret
         uses: Azure/k8s-create-secret@v5
         with:
@@ -87,6 +94,13 @@ jobs:
             shared
           strategy: basic
           action: deploy
+
+      - name: Run MediaWiki update.php
+        run: |
+          kubectl rollout status deployment/php-mediawiki --timeout=5m
+          POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}')
+          echo "Running update.php on $POD"
+          kubectl exec "$POD" -c php-mediawiki -- php /var/www/mediawiki/maintenance/update.php --quick
   debug:
     runs-on: ubuntu-latest
     needs: docker
