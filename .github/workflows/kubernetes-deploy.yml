@@ -87,6 +87,61 @@ jobs:
             shared
           strategy: basic
           action: deploy
+
+      - name: Restart workloads with changed ConfigMaps
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Kubernetes does not natively roll a workload when its mounted
+          # ConfigMap data changes -- the file on disk updates within ~60s
+          # but the process inside the container has no idea. Detect changed
+          # ConfigMap files in this push and trigger a rolling restart of
+          # the consuming workloads.
+
+          if [[ -z "${BEFORE_SHA}" || "${BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+            echo "No previous SHA (branch-create or initial push); skipping auto-restart."
+            exit 0
+          fi
+
+          if ! changed=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BEFORE_SHA}...${AFTER_SHA}" --jq '.files[].filename' 2>&1); then
+            echo "Failed to enumerate changed files: ${changed}"
+            echo "Skipping auto-restart."
+            exit 0
+          fi
+
+          echo "Changed files in this push:"
+          printf '  %s\n' ${changed:-"(none)"}
+
+          # Map: tracked ConfigMap file -> workload that needs a restart.
+          declare -A CM_TO_WORKLOAD=(
+            ["mediawiki/nginx-config.yaml"]="deployment/nginx"
+            ["mediawiki/mariadb-config.yaml"]="statefulset/mariadb-sts"
+            ["mediawiki/valkey-config.yaml"]="statefulset/valkey-sts"
+          )
+
+          declare -A to_restart
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            w="${CM_TO_WORKLOAD[$f]:-}"
+            [[ -z "$w" ]] && continue
+            to_restart["$w"]=1
+          done <<< "$changed"
+
+          if [[ ${#to_restart[@]} -eq 0 ]]; then
+            echo "No tracked ConfigMap changes; nothing to restart."
+            exit 0
+          fi
+
+          for w in "${!to_restart[@]}"; do
+            echo "::group::Rolling restart $w"
+            kubectl rollout restart "$w"
+            kubectl rollout status "$w" --timeout=180s
+            echo "::endgroup::"
+          done
   debug:
     runs-on: ubuntu-latest
     needs: docker

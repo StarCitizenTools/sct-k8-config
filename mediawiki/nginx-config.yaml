@@ -4,6 +4,8 @@ metadata:
     name: nginx-config
 data:
     config: |
+        # Managed via sct-k8-config. deployment/nginx is auto-restarted by
+        # .github/workflows/kubernetes-deploy.yml when this file changes.
         # error_log /var/log/nginx/debug.log debug;
 
         upstream php_fpm {
