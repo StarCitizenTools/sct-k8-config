@@ -94,7 +94,11 @@ jobs:
           AFTER_SHA: ${{ github.event.after }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          # NOTE: deliberately not using `set -u` -- bash errors on
+          # ${#assoc_array[@]} when the associative array has never had
+          # an element assigned, which breaks the "nothing to restart"
+          # path of this script. -e and pipefail are enough for safety.
+          set -eo pipefail
 
           # Kubernetes does not natively roll a workload when its mounted
           # ConfigMap data changes -- the file on disk updates within ~60s
