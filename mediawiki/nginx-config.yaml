@@ -73,8 +73,13 @@ data:
           }
 
           # Redirect to domain root icons
-          location ~* ^/(?:favicon|apple-touch-icon) {
+          location ~* ^/favicon {
             root /var/www/mediawiki/resources/assets/favicon;
+          }
+          location ~* ^/apple-touch-icon {
+            root /var/www/mediawiki/resources/assets/favicon;
+            log_not_found off;
+            access_log off;
           }
 
           location /images {
