@@ -76,6 +76,8 @@ data:
           location ~* ^/favicon {
             root /var/www/mediawiki/resources/assets/favicon;
           }
+          # iOS Safari probes legacy variants (-precomposed, -120x120, etc.)
+          # even when apple-touch-icon.png is shipped; silence the 404 noise.
           location ~* ^/apple-touch-icon {
             root /var/www/mediawiki/resources/assets/favicon;
             log_not_found off;
