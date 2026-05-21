@@ -36,6 +36,11 @@ spec:
         # `kubectl logs -c smw-setup-store`, Loki, and the failure-debug job.
         # postStart hook output only lands in the Event message, which is
         # truncated and not shipped anywhere.
+        #
+        # setupStore writes the schema upgrade key to /usr/local/smw/.smw.json;
+        # the main container reads it at runtime. The two share the `smw`
+        # emptyDir so the file survives the init->main handoff (same pattern as
+        # the php-mediawiki-jobs Deployment).
         - name: smw-setup-store
           image: starcitizentools/mediawiki:smw-26.05.19.541
           command:
@@ -49,6 +54,9 @@ spec:
                 name: images-keys
             - secretRef:
                 name: prd-db-password
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
       containers:
         - name: php-mediawiki
           image: starcitizentools/mediawiki:smw-26.05.19.541
@@ -68,3 +76,9 @@ spec:
                 name: images-keys
             - secretRef:
                 name: prd-db-password
+          volumeMounts:
+            - name: smw
+              mountPath: /usr/local/smw
+      volumes:
+        - name: smw
+          emptyDir: {}
