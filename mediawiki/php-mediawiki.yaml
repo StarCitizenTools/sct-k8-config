@@ -30,6 +30,25 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      initContainers:
+        # SMW schema setup. Lives as an initContainer (not a postStart hook) so
+        # its stdout/stderr is captured by the normal log pipeline -- visible in
+        # `kubectl logs -c smw-setup-store`, Loki, and the failure-debug job.
+        # postStart hook output only lands in the Event message, which is
+        # truncated and not shipped anywhere.
+        - name: smw-setup-store
+          image: starcitizentools/mediawiki:smw-26.05.21.542
+          command:
+            - /bin/sh
+            - -c
+            - php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --quiet
+          envFrom:
+            - secretRef:
+                name: mediawiki-keys
+            - secretRef:
+                name: images-keys
+            - secretRef:
+                name: prd-db-password
       containers:
         - name: php-mediawiki
           image: starcitizentools/mediawiki:smw-26.05.21.542
@@ -49,12 +68,3 @@ spec:
                 name: images-keys
             - secretRef:
                 name: prd-db-password
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  [
-                    "/bin/sh",
-                    "-c",
-                    "php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --quiet",
-                  ]
