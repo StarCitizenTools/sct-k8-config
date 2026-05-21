@@ -37,7 +37,7 @@ spec:
         # postStart hook output only lands in the Event message, which is
         # truncated and not shipped anywhere.
         - name: smw-setup-store
-          image: starcitizentools/mediawiki:smw-26.05.21.542
+          image: starcitizentools/mediawiki:smw-26.05.21.543
           command:
             - /bin/sh
             - -c
@@ -51,7 +51,7 @@ spec:
                 name: prd-db-password
       containers:
         - name: php-mediawiki
-          image: starcitizentools/mediawiki:smw-26.05.21.542
+          image: starcitizentools/mediawiki:smw-26.05.21.543
           ports:
             - containerPort: 9000
           resources:
