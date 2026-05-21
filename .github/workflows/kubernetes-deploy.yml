@@ -172,7 +172,12 @@ jobs:
 
       - name: Recent Warning Events
         run: |
-          kubectl get events --sort-by=.lastTimestamp --field-selector type!=Normal | tail -100 || true
+          # Default table output truncates .message, which is exactly where
+          # postStart-hook stderr and other failure details live. Emit full
+          # messages via jsonpath instead.
+          kubectl get events --sort-by=.lastTimestamp --field-selector type!=Normal \
+            -o jsonpath='{range .items[*]}{.lastTimestamp}{"\t"}{.type}{"\t"}{.reason}{"\t"}{.involvedObject.kind}/{.involvedObject.name}{"\t"}{.message}{"\n"}{end}' \
+            | tail -100 || true
 
       - name: Get Pod Names
         id: get-pod-names
