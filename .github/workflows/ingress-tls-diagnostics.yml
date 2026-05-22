@@ -100,8 +100,12 @@ jobs:
             NS=$(echo "$p" | cut -d/ -f1)
             NAME=$(echo "$p" | cut -d/ -f2)
             echo "::group::Logs for $p"
+            # grep returns 1 when nothing matches; that's the success case
+            # for us (nothing is bypassing CF), so don't let pipefail
+            # turn an empty match into a workflow failure. Wrap in
+            # { ...; } || : so the pipeline always exits 0.
             kubectl logs -n "$NS" "$NAME" --since="${SINCE}" --tail="${MAX_LINES}" 2>&1 \
-              | grep -E -i "$PATTERN" \
+              | { grep -E -i "$PATTERN" || :; } \
               | tee -a "$ALL_LOG" \
               | mask_ips \
               | head -50  # cap per-pod stdout for readability
