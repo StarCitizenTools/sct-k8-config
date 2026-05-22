@@ -1,0 +1,139 @@
+name: Ingress TLS Diagnostics
+
+# Pulls ingress-nginx logs and surfaces TLS handshake failures (mostly
+# Authenticated Origin Pulls rejections after PR #19). Useful for
+# answering "what's trying to hit our origin without going through
+# Cloudflare?"
+#
+# Run manually from the Actions tab. Look at the workflow output, not
+# job artifacts -- everything is written to the step output streams.
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "How far back to look at logs (e.g. 1h, 30m, 6h)"
+        required: false
+        default: "1h"
+        type: string
+      max_lines:
+        description: "Max log lines to scan per pod"
+        required: false
+        default: "100000"
+        type: string
+
+jobs:
+  ingress-tls-info:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Locate ingress-nginx controller pods
+        id: find-pods
+        run: |
+          set -eo pipefail
+          PODS=$(kubectl get pods -A \
+            -l app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller \
+            -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+          if [[ -z "$PODS" ]]; then
+            echo "No ingress-nginx controller pods found via standard labels."
+            echo "Falling back to broader pod-name search..."
+            PODS=$(kubectl get pods -A -o name 2>/dev/null \
+              | grep -E "ingress.*nginx|nginx.*ingress" \
+              | sed 's|pod/||')
+          fi
+          if [[ -z "$PODS" ]]; then
+            echo "Still no ingress-nginx pods found. Listing all namespaces for context:"
+            kubectl get ns
+            exit 1
+          fi
+          echo "Found pods:"
+          printf '  %s\n' $PODS
+          echo "pods<<EOF" >> $GITHUB_OUTPUT
+          echo "$PODS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Collect TLS handshake failures
+        env:
+          PODS: ${{ steps.find-pods.outputs.pods }}
+          SINCE: ${{ inputs.since }}
+          MAX_LINES: ${{ inputs.max_lines }}
+        run: |
+          set -eo pipefail
+
+          WORKDIR=$(mktemp -d)
+          ALL_LOG="$WORKDIR/all-ssl-errors.log"
+          : > "$ALL_LOG"
+
+          # Patterns we care about (case-insensitive):
+          #   "No required SSL certificate"  → AOP rejection (the headline event)
+          #   "client SSL certificate verify error"
+          #   "SSL_do_handshake() failed"
+          #   "peer closed connection in SSL handshake"
+          #   "self signed certificate"
+          #   "unknown ca"
+          PATTERN='No required SSL certificate|SSL certificate verify error|SSL_do_handshake|SSL handshake|self signed certificate|unknown ca'
+
+          # IP masking: client IPs are personal data (GDPR, settled case
+          # law). GHA logs persist ~90 days and are readable by anyone
+          # with repo access, so we mask IPv4 to /24 and IPv6 to /64
+          # before printing or aggregating. /24 still preserves enough
+          # signal to identify "this is a Linode datacenter range" /
+          # "this is a hosting provider" without exposing the specific
+          # host. If you need /32-level data to actually block an IP,
+          # pull it from kubectl logs directly outside CI.
+          mask_ips() {
+            sed -E \
+              -e 's/(client: [0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+/\1.0/g' \
+              -e 's/(client: [0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+):[0-9a-fA-F:]+/\1::/g'
+          }
+
+          while IFS= read -r p; do
+            [[ -z "$p" ]] && continue
+            NS=$(echo "$p" | cut -d/ -f1)
+            NAME=$(echo "$p" | cut -d/ -f2)
+            echo "::group::Logs for $p"
+            kubectl logs -n "$NS" "$NAME" --since="${SINCE}" --tail="${MAX_LINES}" 2>&1 \
+              | grep -E -i "$PATTERN" \
+              | tee -a "$ALL_LOG" \
+              | mask_ips \
+              | head -50  # cap per-pod stdout for readability
+            echo "::endgroup::"
+          done <<< "$PODS"
+
+          TOTAL=$(wc -l < "$ALL_LOG")
+          echo
+          echo "::group::Summary"
+          echo "Total matching log lines across all pods: $TOTAL"
+          if [[ "$TOTAL" -eq 0 ]]; then
+            echo "No TLS handshake failures found. Either nothing is bypassing"
+            echo "Cloudflare right now, or the look-back window was too short."
+            exit 0
+          fi
+          echo "(IPs below are masked to /24 for IPv4 and /64 for IPv6.)"
+          echo "::endgroup::"
+
+          echo "::group::Top 30 client subnets hitting the TLS wall (/24 or /64)"
+          grep -oE 'client: ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|[0-9a-fA-F:]+)' "$ALL_LOG" \
+            | mask_ips \
+            | sort | uniq -c | sort -rn | head -30
+          echo "::endgroup::"
+
+          echo "::group::Top 20 SNI hosts requested (what hostnames are being probed)"
+          grep -oE 'host: "[^"]*"' "$ALL_LOG" | sort | uniq -c | sort -rn | head -20
+          echo "::endgroup::"
+
+          echo "::group::Top 20 server names (per ingress-nginx server block)"
+          grep -oE 'server: [^,]+' "$ALL_LOG" | sort | uniq -c | sort -rn | head -20
+          echo "::endgroup::"
+
+          echo "::group::Sample of 20 raw matching log lines (with IPs masked)"
+          head -20 "$ALL_LOG" | mask_ips
+          echo "::endgroup::"
