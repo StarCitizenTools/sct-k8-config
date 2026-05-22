@@ -50,9 +50,15 @@ metadata:
   namespace: default
   name: nginx-ingress
   annotations:
-    acme.cert-manager.io/http01-edit-in-place: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    # Cloudflare Authenticated Origin Pulls: require client cert from
+    # Cloudflare's CA on every TLS connection. Drops traffic that
+    # bypasses CF (e.g. direct hits to the Linode LB IP) at the TLS
+    # layer, before any application code runs.
+    nginx.ingress.kubernetes.io/auth-tls-secret: "default/cloudflare-origin-ca"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/auth-tls-verify-depth: "1"
     # nginx.ingress.kubernetes.io/configuration-snippet: |
     #   # Ban very old versions of Chrome. For now we're banning up to Chrome 125.
     #   if ($http_user_agent ~* "Chrome/[0-9]{1,2}\.") { return 403; }
