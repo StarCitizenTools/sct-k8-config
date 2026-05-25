@@ -27,6 +27,17 @@ jobs:
           secret-name: mediawiki-keys
           data: ${{ secrets.MEDIAWIKI_KEYS }}
 
+      # UEX_APITOKEN must be stored as a JSON object -- the action runs the
+      # input through JSON.parse -- with the key UEX_APITOKEN, which is the
+      # env var LocalSettings reads via getenv() and that envFrom exposes:
+      #   {"UEX_APITOKEN":"<token>"}
+      - name: UEX_APITOKEN Secret
+        uses: Azure/k8s-create-secret@v5
+        with:
+          secret-type: 'generic'
+          secret-name: uex-keys
+          string-data: ${{ secrets.UEX_APITOKEN }}
+
       - name: PRD_DB_PASSWORD Secret
         uses: Azure/k8s-create-secret@v5
         with:
