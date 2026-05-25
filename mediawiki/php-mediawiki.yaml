@@ -76,6 +76,8 @@ spec:
                 name: images-keys
             - secretRef:
                 name: prd-db-password
+            - secretRef:
+                name: uex-keys
           volumeMounts:
             - name: smw
               mountPath: /usr/local/smw
