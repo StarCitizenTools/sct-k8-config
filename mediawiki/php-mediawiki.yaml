@@ -42,7 +42,7 @@ spec:
         # emptyDir so the file survives the init->main handoff (same pattern as
         # the php-mediawiki-jobs Deployment).
         - name: smw-setup-store
-          image: starcitizentools/mediawiki:smw-26.05.25.549
+          image: starcitizentools/mediawiki:smw-26.05.26.550
           command:
             - /bin/sh
             - -c
@@ -59,7 +59,7 @@ spec:
               mountPath: /usr/local/smw
       containers:
         - name: php-mediawiki
-          image: starcitizentools/mediawiki:smw-26.05.25.549
+          image: starcitizentools/mediawiki:smw-26.05.26.550
           ports:
             - containerPort: 9000
           resources:
