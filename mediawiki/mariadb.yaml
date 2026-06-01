@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: mariadb-configmap
 data:
-  database_url: mariadb-service 
+  database_url: mariadb-service
 
 ---
 apiVersion: v1
@@ -59,14 +59,14 @@ spec:
     metadata:
       labels:
         app: mariadb
-    spec: 
+    spec:
       securityContext:
         fsGroup: 999
       containers:
         - name: mariadb
-          image: mariadb:11.8.8
+          image: mariadb:12.3.2
           ports:
-            - containerPort: 3306 
+            - containerPort: 3306
               name: mariadb-port
           resources:
             limits:
