@@ -88,6 +88,145 @@ jobs:
           secret-name: cloudflare-api-key
           data: ${{ secrets.CLOUDFLARE_API }}
 
+      # Authenticate image pulls against Docker Hub. Anonymous pulls share the
+      # node's IP rate limit, which has throttled a cold pull to ~25min and
+      # blown the deploy's rollout timeout. A personal read-only token lifts
+      # pulls to the higher per-account limit -- image ownership is irrelevant,
+      # this only needs a valid Docker Hub identity.
+      - name: Docker Hub pull secret
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          kubectl create secret docker-registry dockerhub-pull \
+            --docker-server=https://index.docker.io/v1/ \
+            --docker-username="$DOCKERHUB_USERNAME" \
+            --docker-password="$DOCKERHUB_TOKEN" \
+            --namespace=default \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Attach the pull secret to the service accounts every pod runs as, so
+      # all docker.io pulls authenticate without editing individual manifests.
+      # imagePullSecrets on a SA only applies to newly-created pods, so this
+      # takes effect on each workload's next rollout (the deploy below).
+      - name: Attach pull secret to service accounts
+        run: |
+          set -euo pipefail
+          for sa in default internal-kubectl; do
+            if kubectl get serviceaccount "$sa" -n default >/dev/null 2>&1; then
+              kubectl patch serviceaccount "$sa" -n default \
+                -p '{"imagePullSecrets":[{"name":"dockerhub-pull"}]}'
+              echo "Patched serviceaccount/$sa with imagePullSecrets."
+            else
+              echo "::warning::serviceaccount/$sa not found; skipping (will inherit on a later run)."
+            fi
+          done
+
+      # Authenticate the runner too, so the tag-existence inspects below use
+      # the per-account Docker Hub limit instead of the shared runner-IP one.
+      - name: Docker Hub login (runner)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      # Guard 1: fail fast if any manifest references an image tag that does
+      # not exist in the registry. A typo'd/non-existent tag otherwise leaves
+      # the pod stuck in ImagePullBackOff until the rollout times out.
+      - name: Verify image tags exist
+        run: |
+          set -euo pipefail
+          # Uncommented `image:` lines only (a leading `#` fails the anchor).
+          mapfile -t images < <(
+            grep -rhE '^[[:space:]]*image:[[:space:]]*[^[:space:]#]+' mediawiki plausible shared \
+              | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]].*$//; s/^["'\'']//; s/["'\'']$//' \
+              | sort -u
+          )
+          echo "Checking ${#images[@]} unique image references..."
+          fail=0
+          for ref in "${images[@]}"; do
+            [ -z "$ref" ] && continue
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              echo "  ok:      $ref"
+            else
+              echo "  MISSING: $ref"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more image tags do not exist in the registry. Aborting before deploy."
+            exit 1
+          fi
+
+      # Guard 2: pre-pull a changed StatefulSet image onto its target node
+      # BEFORE k8s-deploy rolls the workload. These DB pods are node-pinned
+      # (PVC) and single-replica, so a cold first-time pull (Docker Hub
+      # anonymous-pull throttling has been seen to take ~25min) blows past the
+      # k8s-deploy rollout timeout and fails the deploy with the DB down.
+      # Warming the node cache first keeps the pull off the rollout's clock;
+      # the old pod keeps serving throughout this step.
+      - name: Pre-pull changed StatefulSet images
+        run: |
+          set -euo pipefail
+          # workload -> "manifest file|image-repo needle"
+          declare -A STS=(
+            ["statefulset/mariadb-sts"]="mediawiki/mariadb.yaml|mariadb:"
+            ["statefulset/valkey-sts"]="mediawiki/valkey.yaml|valkey/valkey:"
+          )
+          for wl in "${!STS[@]}"; do
+            IFS='|' read -r file needle <<<"${STS[$wl]}"
+            name="${wl#statefulset/}"
+            desired=$(grep -hE "^[[:space:]]*image:[[:space:]]*${needle}" "$file" \
+              | head -1 | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]].*$//')
+            if [ -z "$desired" ]; then
+              echo "::warning::Could not find ${needle}* image in ${file}; skipping ${wl}."
+              continue
+            fi
+            running=$(kubectl get "$wl" -o jsonpath='{.spec.template.spec.containers[*].image}' 2>/dev/null \
+              | tr ' ' '\n' | grep -E "^${needle}" | head -1 || true)
+            if [ "$desired" = "$running" ]; then
+              echo "${wl} already at ${desired}; no pre-pull needed."
+              continue
+            fi
+            node=$(kubectl get pod "${name}-0" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)
+            if [ -z "$node" ]; then
+              echo "::warning::Could not determine node for ${name}-0; skipping pre-pull (deploy will pull inline)."
+              continue
+            fi
+            echo "::group::Pre-pull ${wl}: ${running:-<none>} -> ${desired} on ${node}"
+            job="prepull-${name}"
+            kubectl delete job "$job" --ignore-not-found
+            cat <<EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${job}
+          spec:
+            backoffLimit: 0
+            ttlSecondsAfterFinished: 120
+            template:
+              spec:
+                nodeName: ${node}
+                restartPolicy: Never
+                containers:
+                  - name: prepull
+                    image: ${desired}
+                    imagePullPolicy: IfNotPresent
+                    command: ["/bin/sh", "-c", "exit 0"]
+          EOF
+            echo "Waiting for image pull on ${node} (up to 30m)..."
+            if ! kubectl wait --for=condition=complete "job/${job}" --timeout=1800s; then
+              echo "::error::Pre-pull job ${job} did not complete; image may be unpullable or the pull is stuck."
+              kubectl describe "job/${job}" || true
+              kubectl delete job "${job}" --ignore-not-found
+              exit 1
+            fi
+            kubectl delete job "${job}" --ignore-not-found
+            echo "Pre-pull complete: ${desired} cached on ${node}."
+            echo "::endgroup::"
+          done
+
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v5
         with:
