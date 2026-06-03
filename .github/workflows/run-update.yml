@@ -1,0 +1,40 @@
+name: Run MediaWiki update.php
+
+# Manually-triggered DB schema migration. MediaWiki extensions that add tables
+# (e.g. AGGrid's aggrid_data) register them via LoadExtensionSchemaUpdates, but
+# nothing in the deploy pipeline runs update.php -- so the table never gets
+# created on a plain image bump. Run this after deploying an extension update
+# that changes the schema. update.php is idempotent: a no-op when up to date.
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      # Exec into a live php-mediawiki pod rather than spawning a fresh Job: the
+      # running container already has the image, the mounted config, and every
+      # secret (DB password, etc.) wired in via envFrom, so update.php connects
+      # to the DB with no extra plumbing.
+      - name: Run update.php
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "Running update.php in pod: $pod"
+          kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php update --quiet
