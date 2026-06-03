@@ -3,36 +3,47 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Fetch latest tags from Docker Hub (most recently updated)
-echo "Fetching latest tags from Docker Hub..."
+# Our app images live in GHCR as PRIVATE packages, so listing tags needs an
+# authenticated GitHub token with the read:packages scope. We reuse the gh CLI
+# for auth (it handles tokens + pagination). The GitHub Packages API returns
+# versions newest-first by created_at, so the first tag matching our pattern is
+# the most recently pushed -- same behaviour as the old Docker Hub query.
+GHCR_ORG="starcitizentools"
 
-MW_TAG=$(curl -sf "https://hub.docker.com/v2/repositories/starcitizentools/mediawiki/tags/?page_size=20&ordering=last_updated" \
-  | python3 -c "
-import sys, json, re
-data = json.load(sys.stdin)
-for r in data['results']:
-    if re.match(r'^smw-\d', r['name']):
-        print(r['name'])
-        break
-")
-
-if [ -z "$MW_TAG" ]; then
-  echo "Error: Failed to fetch mediawiki tag from Docker Hub" >&2
+# Preflight: gh present and scoped for package reads.
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: gh (GitHub CLI) is required but not installed." >&2
+  exit 1
+fi
+if ! gh auth status 2>/dev/null | grep -q "read:packages"; then
+  echo "Error: gh token is missing the 'read:packages' scope." >&2
+  echo "       Run: gh auth refresh -h github.com -s read:packages" >&2
   exit 1
 fi
 
-NGINX_TAG=$(curl -sf "https://hub.docker.com/v2/repositories/starcitizentools/nginx/tags/?page_size=20&ordering=last_updated" \
-  | python3 -c "
-import sys, json, re
-data = json.load(sys.stdin)
-for r in data['results']:
-    if re.match(r'^\d', r['name']):
-        print(r['name'])
-        break
-")
+# latest_tag <package> <regex> -> newest tag matching the regex (or empty).
+latest_tag() {
+  local package="$1" regex="$2"
+  gh api --paginate "/orgs/${GHCR_ORG}/packages/container/${package}/versions" \
+    --jq '.[].metadata.container.tags[]' \
+    | grep -E "$regex" \
+    | head -1
+}
 
+echo "Fetching latest tags from GHCR..."
+
+# mediawiki: smw-<version>, excluding smw-latest and smw-jobrunner-* (both share
+# this package). Anchoring smw- to a digit drops both.
+MW_TAG=$(latest_tag mediawiki '^smw-[0-9]')
+if [ -z "$MW_TAG" ]; then
+  echo "Error: Failed to fetch mediawiki tag from GHCR" >&2
+  exit 1
+fi
+
+# nginx: bare <version> tag (e.g. 26.06.03.562), excluding 'latest'.
+NGINX_TAG=$(latest_tag nginx '^[0-9]')
 if [ -z "$NGINX_TAG" ]; then
-  echo "Error: Failed to fetch nginx tag from Docker Hub" >&2
+  echo "Error: Failed to fetch nginx tag from GHCR" >&2
   exit 1
 fi
 
