@@ -1,0 +1,43 @@
+name: DB schema drift check
+
+# Read-only diagnostic. update.php aborted with "Table searchdigest doesn't
+# exist" while trying to ADD AN INDEX to it -- which means the updatelog thinks
+# the table was already created but it's physically gone (schema drift). This
+# job confirms which extension tables actually exist and what the updatelog
+# records, so we can decide the fix without guessing. It writes nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  schema-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Inspect tables and updatelog
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Using pod: $pod"
+          run() { kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql --query="$1"; }
+
+          echo "=== Do these tables physically exist? ==="
+          run "SELECT table_name FROM information_schema.tables \
+               WHERE table_schema = DATABASE() \
+               AND table_name IN ('searchdigest','searchdigest_blocks','aggrid_data') \
+               ORDER BY table_name;"
+
+          echo "=== updatelog entries for searchdigest / aggrid ==="
+          run "SELECT ul_key FROM updatelog \
+               WHERE ul_key LIKE '%searchdigest%' OR ul_key LIKE '%aggrid%' \
+               ORDER BY ul_key;"
