@@ -106,17 +106,33 @@ jobs:
             --namespace=default \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # Attach the pull secret to the service accounts every pod runs as, so
-      # all docker.io pulls authenticate without editing individual manifests.
-      # imagePullSecrets on a SA only applies to newly-created pods, so this
-      # takes effect on each workload's next rollout (the deploy below).
+      # Our app images (starcitizentools/*) live in GHCR as private packages,
+      # so the kubelet needs credentials to pull them. Uses a read:packages
+      # PAT; this can be dropped if the packages are ever made public.
+      - name: GHCR pull secret
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          kubectl create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_USERNAME" \
+            --docker-password="$GHCR_TOKEN" \
+            --namespace=default \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Attach both pull secrets to the service accounts every pod runs as, so
+      # docker.io and ghcr.io pulls authenticate without editing individual
+      # manifests. imagePullSecrets on a SA only applies to newly-created pods,
+      # so this takes effect on each workload's next rollout (the deploy below).
       - name: Attach pull secret to service accounts
         run: |
           set -euo pipefail
           for sa in default internal-kubectl; do
             if kubectl get serviceaccount "$sa" -n default >/dev/null 2>&1; then
               kubectl patch serviceaccount "$sa" -n default \
-                -p '{"imagePullSecrets":[{"name":"dockerhub-pull"}]}'
+                -p '{"imagePullSecrets":[{"name":"dockerhub-pull"},{"name":"ghcr-pull"}]}'
               echo "Patched serviceaccount/$sa with imagePullSecrets."
             else
               echo "::warning::serviceaccount/$sa not found; skipping (will inherit on a later run)."
@@ -130,6 +146,14 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      # Also log into GHCR so the tag-existence inspects below can read our
+      # private app-image packages.
+      - name: GHCR login (runner)
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       # Guard 1: fail fast if any manifest references an image tag that does
       # not exist in the registry. A typo'd/non-existent tag otherwise leaves
