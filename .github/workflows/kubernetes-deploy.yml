@@ -251,6 +251,85 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Guard 3: warm changed Deployment images on EVERY node before the
+      # rollout. Unlike the StatefulSets above, Deployment pods (nginx,
+      # php-mediawiki, jobs) are not node-pinned -- a surge pod can land on any
+      # node, so an inline first-pull would run on the rollout's 10m clock.
+      # Pulling ahead keeps it off that clock; and because each pull is pinned
+      # to a node, a node whose runtime is wedged (Ready but unable to start
+      # pods -- the 2026-06-06 failure mode) surfaces here as a named warning
+      # instead of an opaque rollout timeout. Best-effort: a stuck node warns
+      # but does not fail the deploy, since the surge pod may still schedule
+      # onto a healthy node. No secrets are emitted -- only image and node names.
+      - name: Pre-pull changed Deployment images (all nodes)
+        run: |
+          set -euo pipefail
+          # workload -> "manifest file|image-repo needle" (needle is unique per file)
+          declare -A DEPLOY=(
+            ["nginx"]="mediawiki/nginx.yaml|ghcr.io/starcitizentools/nginx:"
+            ["php-mediawiki"]="mediawiki/php-mediawiki.yaml|ghcr.io/starcitizentools/mediawiki:smw-"
+            ["php-mediawiki-jobs"]="mediawiki/php-mediawiki-jobs.yaml|ghcr.io/starcitizentools/mediawiki:smw-jobrunner-"
+          )
+
+          # Collect desired images that differ from what each Deployment runs now.
+          changed_images=()
+          for name in "${!DEPLOY[@]}"; do
+            IFS='|' read -r file needle <<<"${DEPLOY[$name]}"
+            desired=$(grep -hE "^[[:space:]]*image:[[:space:]]*${needle}" "$file" \
+              | head -1 | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]].*$//')
+            if [ -z "$desired" ]; then
+              echo "::warning::Could not find ${needle}* image in ${file}; skipping ${name}."
+              continue
+            fi
+            running=$(kubectl get deployment "$name" \
+              -o jsonpath='{.spec.template.spec.containers[*].image}{" "}{.spec.template.spec.initContainers[*].image}' 2>/dev/null \
+              | tr ' ' '\n' | grep -E "^${needle}" | head -1 || true)
+            if [ "$desired" = "$running" ]; then
+              echo "${name} already at ${desired}; no pre-pull needed."
+            else
+              echo "${name}: ${running:-<none>} -> ${desired} (will warm)."
+              changed_images+=("$desired")
+            fi
+          done
+
+          if [ "${#changed_images[@]}" -eq 0 ]; then
+            echo "No changed Deployment images; nothing to pre-pull."
+            exit 0
+          fi
+
+          # Render one no-op container per image (printf keeps indentation exact,
+          # independent of this YAML block's own indentation).
+          containers_yaml=""
+          idx=0
+          for img in "${changed_images[@]}"; do
+            containers_yaml+=$(printf '        - name: pull-%s\n          image: %s\n          imagePullPolicy: IfNotPresent\n          command: ["/bin/sh", "-c", "exit 0"]\n' "$idx" "$img")
+            containers_yaml+=$'\n'
+            idx=$((idx + 1))
+          done
+
+          # One pull Job per node, pinned via nodeName. The pod inherits the
+          # default SA's imagePullSecrets (patched earlier), so private GHCR
+          # pulls authenticate.
+          node_idx=0
+          for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+            job="prepull-deploy-${node_idx}"
+            node_idx=$((node_idx + 1))
+            echo "::group::Warm ${#changed_images[@]} image(s) on ${node}"
+            kubectl delete job "$job" --ignore-not-found
+            printf 'apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: %s\nspec:\n  backoffLimit: 0\n  ttlSecondsAfterFinished: 120\n  template:\n    spec:\n      nodeName: %s\n      restartPolicy: Never\n      containers:\n%s' \
+              "$job" "$node" "$containers_yaml" | kubectl apply -f -
+            # The 5m is spent on ANY non-completion: an unpullable image
+            # (backoffLimit 0 -> Job goes Failed, which `condition=complete`
+            # does not short-circuit on) costs the full timeout too, not only a
+            # wedged node. Bounded either way; best-effort, so we warn and move on.
+            if ! kubectl wait --for=condition=complete "job/${job}" --timeout=300s; then
+              echo "::warning::Pre-pull did not complete on ${node} within 5m -- the node may be unable to pull images or start pods (run 'kubectl describe node ${node}'). Continuing; the rollout may still place pods on a healthy node."
+              kubectl describe "job/${job}" || true
+            fi
+            kubectl delete job "${job}" --ignore-not-found
+            echo "::endgroup::"
+          done
+
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v5
         with:
@@ -335,9 +414,26 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
       
+      # A rollout can also fail because of the node a pod lands on, not the
+      # workload itself -- a node that reports Ready while its container runtime
+      # is wedged leaves new pods stuck in ContainerCreating/PodInitializing
+      # with no Warning event (seen 2026-06-06). Dump node health and where the
+      # not-Running pods are scheduled so a bad node is obvious. describe/get
+      # only expose Secret *names*, never values, so this is safe to log.
+      - name: Node health & pod placement
+        run: |
+          echo "--- Nodes ---"
+          kubectl get nodes -o wide || true
+          echo "--- Node conditions & pressure ---"
+          kubectl describe nodes || true
+          echo "--- App pods (with node) ---"
+          kubectl get pods -o wide -l 'app in (nginx,php-mediawiki,php-mediawiki-jobs)' || true
+          echo "--- Pods not Running, all namespaces (with node) ---"
+          kubectl get pods -A -o wide --field-selector=status.phase!=Running || true
+
       - name: Describe Deployments & ReplicaSets
         run: |
-          for app in php-mediawiki php-mediawiki-jobs; do
+          for app in nginx php-mediawiki php-mediawiki-jobs; do
             echo "--- Deployment/$app ---"
             kubectl describe deployment "$app" || echo "Could not describe deployment $app"
             echo "--- ReplicaSets for $app ---"
@@ -356,7 +452,7 @@ jobs:
       - name: Get Pod Names
         id: get-pod-names
         run: |
-          POD_NAMES=$(kubectl get pods -l 'app in (php-mediawiki,php-mediawiki-jobs)' -o jsonpath='{.items[*].metadata.name}')
+          POD_NAMES=$(kubectl get pods -l 'app in (nginx,php-mediawiki,php-mediawiki-jobs)' -o jsonpath='{.items[*].metadata.name}')
           echo "POD_NAMES=$POD_NAMES" >> $GITHUB_OUTPUT
 
       - name: Get Pod Logs
