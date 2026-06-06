@@ -41,7 +41,7 @@ spec:
         # shares anything with the main container -- setupStore just applies any
         # pending SMW store schema changes against the DB.
         - name: smw-setup-store
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.566
+          image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.567
           command:
             - /bin/sh
             - -c
@@ -55,7 +55,7 @@ spec:
                 name: prd-db-password
       containers:
         - name: php-mediawiki
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.566
+          image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.567
           ports:
             - containerPort: 9000
           resources:
