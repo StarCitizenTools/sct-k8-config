@@ -11,7 +11,6 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: internal-kubectl
           containers:
             - name: cronjob-mw-daily
               image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.566
@@ -24,9 +23,6 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
-              volumeMounts:
-                - name: smw
-                  mountPath: /usr/local/smw
               command: ["/bin/sh"]
               args:
                 - -c
@@ -37,19 +33,6 @@ spec:
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:disposeOutdatedEntities &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
-          initContainers:
-            - name: smw-setup-file
-              image: bitnami/kubectl:latest
-              command:
-                - /bin/sh
-                - -c
-                - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
-              volumeMounts:
-                - name: smw
-                  mountPath: /usr/local/smw
-          volumes:
-            - name: smw
-              emptyDir: {}
           restartPolicy: OnFailure
 ---
 apiVersion: batch/v1
@@ -139,7 +122,6 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: internal-kubectl
           containers:
             - name: cronjob-mw-monthly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.06.06.566
@@ -152,9 +134,6 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
-              volumeMounts:
-                - name: smw
-                  mountPath: /usr/local/smw
               command: ["/bin/sh"]
               args:
                 - -c
@@ -163,17 +142,4 @@ spec:
                   php /var/www/mediawiki/maintenance/run.php cleanupWatchlist --fix &&
                   php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
-          initContainers:
-            - name: smw-setup-file
-              image: bitnami/kubectl:latest
-              command:
-                - /bin/sh
-                - -c
-                - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
-              volumeMounts:
-                - name: smw
-                  mountPath: /usr/local/smw
-          volumes:
-            - name: smw
-              emptyDir: {}
           restartPolicy: OnFailure
