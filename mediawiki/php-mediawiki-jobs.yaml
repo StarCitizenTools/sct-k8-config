@@ -22,7 +22,7 @@ spec:
         runAsUser: 33
       containers:
         - name: jobrunner
-          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.05.565
+          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.06.566
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
@@ -47,7 +47,7 @@ spec:
             - name: smw
               mountPath: /usr/local/smw
         - name: jobchron
-          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.05.565
+          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.06.566
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
