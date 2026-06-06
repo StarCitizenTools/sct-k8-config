@@ -16,7 +16,6 @@ spec:
       labels:
         app: php-mediawiki-jobs
     spec:
-      serviceAccountName: internal-kubectl
       securityContext:
         fsGroup: 33
         runAsUser: 33
@@ -43,9 +42,6 @@ spec:
                 name: images-keys
             - secretRef:
                 name: uex-keys
-          volumeMounts:
-            - name: smw
-              mountPath: /usr/local/smw
         - name: jobchron
           image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.06.566
           command: ["/bin/sh"]
@@ -66,16 +62,3 @@ spec:
           env:
             - name: RUNNER_TYPE
               value: Chron
-      initContainers:
-        - name: smw-setup-file
-          image: bitnami/kubectl:latest
-          command:
-            - /bin/sh
-            - -c
-            - POD=$(kubectl get pod -l app=php-mediawiki -o jsonpath='{.items[0].metadata.name}') && kubectl cp $POD:/usr/local/smw/.smw.json /usr/local/smw/.smw.json
-          volumeMounts:
-            - name: smw
-              mountPath: /usr/local/smw
-      volumes:
-        - name: smw
-          emptyDir: {}
