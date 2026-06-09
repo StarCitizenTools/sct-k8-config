@@ -21,7 +21,7 @@ spec:
         runAsUser: 33
       containers:
         - name: jobrunner
-          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.08.571
+          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.08.572
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
@@ -43,7 +43,7 @@ spec:
             - secretRef:
                 name: uex-keys
         - name: jobchron
-          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.08.571
+          image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.08.572
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
