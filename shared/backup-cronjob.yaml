@@ -51,6 +51,15 @@ spec:
           containers:
           - name: cronjob-mariadb-backup
             image: d3fk/mysql-s3-backup:stable
+            # Bound the nightly dump so it can't starve a node (mysqldump is mostly
+            # I/O; memory kept generous so a large dump+upload won't OOM the backup).
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "256Mi"
+              limits:
+                cpu: "1"
+                memory: "2Gi"
             args:
             - sh
             - -c
