@@ -1,110 +1,131 @@
 name: Valkey Diagnostics
 
+# Read-only diagnostics for the valkey cache (valkey-sts-0): memory/eviction
+# health, key-space breakdown, and parser-cache fragmentation.
+#
+# Everything here is non-destructive -- only INFO / DBSIZE / cursor-based --scan
+# (never the blocking KEYS) and per-key GET / MEMORY USAGE / TTL. Safe on the
+# live instance. Adjust the size of the "top N" listings with the input below.
 on:
   workflow_dispatch:
+    inputs:
+      top_n:
+        description: Rows to show in "top N" listings
+        required: false
+        default: "20"
+
+permissions:
+  contents: read
+
+# Don't let two diagnostic runs scan the cache at the same time.
+concurrency:
+  group: valkey-diagnostics
+  cancel-in-progress: false
 
 jobs:
-  valkey-info:
+  diagnostics:
     runs-on: ubuntu-latest
+    env:
+      VALKEY_POD: valkey-sts-0
+      # Command prefix for in-pod work. `-c valkey` targets the cache container
+      # (the pod also runs the redis-exporter sidecar, which would otherwise emit
+      # a "Defaulted container" note). Keep the pod name in sync with VALKEY_POD.
+      VALKEY_EXEC: kubectl exec valkey-sts-0 -c valkey --
+      TOP_N: ${{ inputs.top_n }}
     steps:
       - uses: azure/setup-kubectl@v4
 
-      - name: Kubernetes Set Context
+      - name: Kubernetes set context
         uses: Azure/k8s-set-context@v4
         with:
           cluster-type: generic
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
-      - name: Node headroom for valkey pod
+      - name: Node headroom
         run: |
-          NODE=$(kubectl get pod valkey-sts-0 -o jsonpath='{.spec.nodeName}')
-          echo "valkey-sts-0 is on node: $NODE"
+          node=$(kubectl get pod "$VALKEY_POD" -o jsonpath='{.spec.nodeName}')
+          echo "$VALKEY_POD is on node: $node"
           echo
-          echo "=== Node allocatable (total schedulable capacity) ==="
-          kubectl get node "$NODE" -o jsonpath='{.status.allocatable}' | tr ',' '\n'
+          echo "=== Node allocatable (schedulable capacity) ==="
+          kubectl get node "$node" -o jsonpath='{.status.allocatable}' | tr ',' '\n'
+          echo; echo
+          echo "=== Allocated requests/limits on this node ==="
+          kubectl describe node "$node" | sed -n '/Allocated resources:/,/^Events:/p' | head -n -1
           echo
-          echo
-          echo "=== Allocated requests/limits on this node (sum of all pod requests) ==="
-          kubectl describe node "$NODE" \
-            | sed -n '/Allocated resources:/,/^Events:/p' \
-            | head -n -1
-          echo
-          echo "=== Live memory usage across all nodes ==="
+          echo "=== Live memory usage across nodes ==="
           kubectl top nodes 2>&1 || echo "(metrics-server unavailable)"
 
-      - name: Memory pressure & eviction counters
+      - name: Memory, eviction & size
         run: |
-          kubectl exec valkey-sts-0 -- valkey-cli INFO memory \
-            | grep -E "^(used_memory_human|used_memory_peak_human|maxmemory_human|maxmemory_policy):"
+          $VALKEY_EXEC valkey-cli INFO memory \
+            | grep -E "^(used_memory_human|used_memory_rss_human|used_memory_peak_human|maxmemory_human|maxmemory_policy|mem_fragmentation_ratio):"
           echo "---"
-          kubectl exec valkey-sts-0 -- valkey-cli INFO stats \
+          $VALKEY_EXEC valkey-cli INFO stats \
             | grep -E "^(keyspace_hits|keyspace_misses|evicted_keys|expired_keys):"
+          echo "---"
+          printf 'total keys (DBSIZE): '; $VALKEY_EXEC valkey-cli DBSIZE
 
-      - name: Total key count
-        run: kubectl exec valkey-sts-0 -- valkey-cli DBSIZE
-
-      - name: Parser cache key count
+      - name: Key-space breakdown (top prefixes)
         run: |
-          kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern '*pcache*' \
-            | wc -l
+          # Full scan -> first 3 colon-segments -> counts, computed in-pod then
+          # written to a file so the runner-side 'head' never breaks a pipe.
+          $VALKEY_EXEC sh -c '
+            valkey-cli --scan | awk -F: "{print \$1\":\"\$2\":\"\$3}" | sort | uniq -c | sort -rn
+          ' > prefixes.txt
+          echo "=== Top $TOP_N key prefixes (count  prefix) ==="
+          head -n "$TOP_N" prefixes.txt
 
-      - name: Sample parser cache keys with sizes & TTLs
+      - name: Parser-cache fragmentation
         run: |
-          kubectl exec valkey-sts-0 -- sh -c '
+          # One cursor-based scan of all ParserOutput variant keys, streamed to the
+          # runner so parsing uses the runner's awk/sed. Key shape (MediaWiki 1.43):
+          #   <wikiId>:pcache:idhash:<pageid>-0!<opt=val!...>   ('-0' is constant;
+          #   '!canonical' = an all-default, unfragmented parse).
+          $VALKEY_EXEC valkey-cli --scan --pattern '*pcache:idhash:*' > idhash.txt
+          total=$(wc -l < idhash.txt)
+          echo "ParserOutput (idhash) variant keys: $total"
+          [ "$total" -eq 0 ] && { echo "none found"; exit 0; }
+
+          # Per-page variant counts, computed once to a file. Everything downstream
+          # reads the file (never 'sort | head'), which is what avoids SIGPIPE noise.
+          sed -E 's#.*:idhash:([0-9]+).*#\1#' idhash.txt | sort | uniq -c | sort -rn > counts.txt
+
+          echo
+          echo "=== Variants per page ==="
+          awk '{n++; s+=$1; if($1>mx)mx=$1; if($1==1)one++}
+               END{printf "pages=%d  variant_keys=%d  avg=%.2f/page  max=%d  unfragmented=%d (%.1f%%)\n",
+                          n, s, s/n, mx, one, 100*one/n}' counts.txt
+
+          echo
+          echo "=== Top $TOP_N most-fragmented pages (variants  page_id) ==="
+          head -n "$TOP_N" counts.txt
+
+          echo
+          echo "=== Which option splits the cache (suffix tally) ==="
+          echo "    canonical=unfragmented | userlang=UI lang | useParsoid=VE | dateformat/thumbsize=user prefs"
+          sed -E 's/^[^!]*!//' idhash.txt | tr '!' '\n' | sed -E 's/=.*//' | sort | uniq -c | sort -rn
+
+          echo
+          echo "=== Worst-offender page ==="
+          read -r variants wp < counts.txt
+          echo "page_id=$wp  variants=$variants  (title via Special:Redirect/page/$wp)"
+          grep ":idhash:${wp}-" idhash.txt | sed "s/.*:idhash:${wp}-//" | sort > wp-variants.txt
+          head -n 40 wp-variants.txt
+          # idoptions key is deterministic: reuse the wikiId:pcache: prefix from any idhash key.
+          prefix=$(head -1 idhash.txt | sed -E 's#(.*:pcache:)idhash:.*#\1#')
+          $VALKEY_EXEC valkey-cli GET "${prefix}idoptions:${wp}" > idoptions.txt || true
+          if [ -s idoptions.txt ]; then
+            echo "-- idoptions (cache-varying options this page records) --"
+            head -c 1500 idoptions.txt; echo
+          fi
+
+      - name: Sample parser-cache keys (size & TTL)
+        run: |
+          $VALKEY_EXEC sh -c '
             valkey-cli --scan --pattern "*pcache*" | head -10 | while read -r k; do
-              size=$(valkey-cli MEMORY USAGE "$k" 2>/dev/null)
-              ttl=$(valkey-cli TTL "$k" 2>/dev/null)
-              printf "%-90s size=%s ttl=%s\n" "$k" "$size" "$ttl"
+              printf "%-92s size=%s ttl=%s\n" "$k" \
+                "$(valkey-cli MEMORY USAGE "$k" 2>/dev/null)" \
+                "$(valkey-cli TTL "$k" 2>/dev/null)"
             done
           '
-
-      - name: Top key prefixes by count (where memory is going)
-        run: |
-          kubectl exec valkey-sts-0 -- sh -c '
-            valkey-cli --scan \
-              | awk -F: "{print \$1\":\"\$2\":\"\$3}" \
-              | sort | uniq -c | sort -rn | head -20
-          '
-
-      # Parser cache fragmentation: how many ParserOutput variants exist per page
-      # and WHICH parser option is splitting them. Key shape (MW 1.43, verified):
-      #   <wikiId>:pcache:idhash:<pageid>-0!<option=value!...>   (-0 is a constant)
-      #   ...!canonical  => an all-default (unfragmented) parse.
-      # The scan streams to the runner so parsing uses the runner's awk/sed (no
-      # in-container escaping). --scan is cursor-based/non-blocking on the live DB.
-      - name: Parser cache fragmentation analysis
-        run: |
-          kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern '*pcache:idhash:*' > idhash.txt
-          total=$(wc -l < idhash.txt)
-          echo "=== ParserOutput (idhash) variant keys: $total ==="
-          if [ "$total" -eq 0 ]; then echo "No idhash keys found (pattern mismatch?)."; exit 0; fi
-          echo
-
-          # page_id = the digits right after ':idhash:'
-          sed -E 's#.*:idhash:([0-9]+).*#\1#' idhash.txt > pageids.txt
-
-          echo "=== Distribution: variants per page ==="
-          sort pageids.txt | uniq -c \
-            | awk '{n++; s+=$1; if($1>m){m=$1; mp=$2}; if($1==1)one++}
-                   END{printf "pages=%d  variant_keys=%d  avg_variants/page=%.2f  max=%d (page %s)\n", n,s,s/n,m,mp;
-                       printf "unfragmented pages (exactly 1 variant): %d (%.1f%% of pages)\n", one, 100*one/n}'
-          echo
-
-          echo "=== Top 20 most-fragmented pages (variant_count  page_id) ==="
-          sort pageids.txt | uniq -c | sort -rn | head -20
-          echo
-
-          echo "=== Which cache-varying option is splitting the cache (name tally across all variants) ==="
-          echo "    high 'userlang' => UI language (uselang/prefs); 'canonical' => unfragmented; dateformat/thumbsize => user prefs"
-          sed -E 's/^[^!]*!//' idhash.txt | tr '!' '\n' | sed -E 's/=.*//' | sort | uniq -c | sort -rn
-          echo
-
-          echo "=== Worst-offender page: its cached option-combinations + recorded used-options ==="
-          wp=$(sort pageids.txt | uniq -c | sort -rn | head -1 | awk '{print $2}')
-          echo "page_id = $wp   (resolve title via Special:Redirect/page/$wp)"
-          echo "-- variant suffixes (each line = one cached ParserOutput for this page) --"
-          grep ":idhash:${wp}-" idhash.txt | sed "s/.*:idhash:${wp}-//" | sort | head -40
-          echo "-- idoptions metadata (the cache-varying options this page records) --"
-          okey=$(kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern "*pcache:idoptions:${wp}" | head -1)
-          if [ -n "$okey" ]; then kubectl exec valkey-sts-0 -- valkey-cli GET "$okey" | head -c 1500; echo; else echo "(no idoptions key for page $wp)"; fi
