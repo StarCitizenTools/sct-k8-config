@@ -1,0 +1,79 @@
+name: Abort maintenance job
+
+# Manually aborts the currently-running Job spawned by a maintenance CronJob.
+#
+# Why this exists: a CronJob-spawned Job that is ALREADY running keeps the pod
+# spec it was created with -- later edits to the CronJob (resource limits, new
+# flags) do NOT apply to it. On 2026-06-15 the biweekly SemanticMediaWiki
+# rebuildData job (old uncapped `-d 100` command) kept restarting from 0 and
+# pinned ~4 cores for hours, intermittently taking the site down, and could only
+# be stopped by deleting the running Job. This gives a kubectl-free way to do
+# that. Aborting is safe: rebuildData/updateSpecialPages are idempotent and the
+# CronJob will schedule a fresh run (with the current spec) next cycle.
+on:
+  workflow_dispatch:
+    inputs:
+      cronjob:
+        description: Which maintenance CronJob's running Job to abort
+        required: true
+        default: cronjob-mw-biweekly
+        type: choice
+        options:
+          - cronjob-mw-biweekly
+          - cronjob-mw-daily
+          - cronjob-mw-tridaily
+          - cronjob-mw-monthly
+          - cronjob-mariadb-backup
+
+jobs:
+  abort:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Abort running Job
+        env:
+          CRONJOB: ${{ inputs.cronjob }}
+        run: |
+          set -euo pipefail
+
+          # CronJob-spawned Jobs are named "<cronjob>-<scheduleEpochMinutes>".
+          # Match that exact shape so we never touch an unrelated workload.
+          jobs=$(kubectl get jobs -n default \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
+            | grep -E "^${CRONJOB}-[0-9]+$" || true)
+
+          if [ -z "$jobs" ]; then
+            echo "No Job found for CronJob '${CRONJOB}'. Nothing to abort."
+            exit 0
+          fi
+
+          aborted=0
+          for j in $jobs; do
+            complete=$(kubectl get job "$j" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' || true)
+            if [ "$complete" = "True" ]; then
+              echo "Skipping '$j' (already Complete)."
+              continue
+            fi
+            echo "::group::Aborting active Job '$j'"
+            kubectl get job "$j" -n default -o wide || true
+            kubectl get pods -n default -l "job-name=$j" -o wide || true
+            # Deleting the Job cascades to its pods, freeing the node immediately.
+            kubectl delete job "$j" -n default --cascade=foreground
+            echo "::endgroup::"
+            aborted=$((aborted + 1))
+          done
+
+          if [ "$aborted" -eq 0 ]; then
+            echo "Only completed Job(s) matched '${CRONJOB}'; nothing active to abort."
+          else
+            echo "Aborted ${aborted} active Job(s) for '${CRONJOB}'."
+          fi
