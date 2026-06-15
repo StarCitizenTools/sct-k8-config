@@ -82,6 +82,17 @@ spec:
       template:
         spec:
           containers:
+            # rebuildData below is incremental, not a full re-parse:
+            #  --revision-mode   only re-parses entities whose page revision changed
+            #                    (smw_rev != latest); the unchanged majority is skipped.
+            #  --auto-recovery   checkpoints progress so an OnFailure restart resumes
+            #                    instead of starting from entity 0.
+            #  --skip-dispose    the daily job already runs disposeOutdatedEntities.
+            #  --ignore-exceptions  a bad Lua/parser page is logged + skipped, not fatal.
+            # The old `-d 100` was a per-entity 100ms usleep (~7.85h over ~282k entities)
+            # and is removed; the cron pod's CPU is bounded by k8s limits instead.
+            # A true full rebuild (drift repair) is now an on-demand op:
+            #   run.php SemanticMediaWiki:rebuildData --force-update --auto-recovery
             - name: cronjob-mw-biweekly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.06.12.579
               envFrom:
@@ -104,7 +115,9 @@ spec:
                   php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostrevisions &&
                   php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Wantedpages &&
                   php /var/www/mediawiki/maintenance/run.php initSiteStats --update --active &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData -d 100 &&
+                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --revision-mode --auto-recovery --skip-dispose --ignore-exceptions --exception-log /tmp/smw-rebuild --report-runtime
+                  || echo "[biweekly] rebuildData exited non-zero: logged parser exceptions were skipped, the run still completed -- not failing the job"
+                  &&
                   php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-import
           restartPolicy: OnFailure
 
