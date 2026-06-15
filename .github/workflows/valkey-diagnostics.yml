@@ -66,3 +66,45 @@ jobs:
               | awk -F: "{print \$1\":\"\$2\":\"\$3}" \
               | sort | uniq -c | sort -rn | head -20
           '
+
+      # Parser cache fragmentation: how many ParserOutput variants exist per page
+      # and WHICH parser option is splitting them. Key shape (MW 1.43, verified):
+      #   <wikiId>:pcache:idhash:<pageid>-0!<option=value!...>   (-0 is a constant)
+      #   ...!canonical  => an all-default (unfragmented) parse.
+      # The scan streams to the runner so parsing uses the runner's awk/sed (no
+      # in-container escaping). --scan is cursor-based/non-blocking on the live DB.
+      - name: Parser cache fragmentation analysis
+        run: |
+          kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern '*pcache:idhash:*' > idhash.txt
+          total=$(wc -l < idhash.txt)
+          echo "=== ParserOutput (idhash) variant keys: $total ==="
+          if [ "$total" -eq 0 ]; then echo "No idhash keys found (pattern mismatch?)."; exit 0; fi
+          echo
+
+          # page_id = the digits right after ':idhash:'
+          sed -E 's#.*:idhash:([0-9]+).*#\1#' idhash.txt > pageids.txt
+
+          echo "=== Distribution: variants per page ==="
+          sort pageids.txt | uniq -c \
+            | awk '{n++; s+=$1; if($1>m){m=$1; mp=$2}; if($1==1)one++}
+                   END{printf "pages=%d  variant_keys=%d  avg_variants/page=%.2f  max=%d (page %s)\n", n,s,s/n,m,mp;
+                       printf "unfragmented pages (exactly 1 variant): %d (%.1f%% of pages)\n", one, 100*one/n}'
+          echo
+
+          echo "=== Top 20 most-fragmented pages (variant_count  page_id) ==="
+          sort pageids.txt | uniq -c | sort -rn | head -20
+          echo
+
+          echo "=== Which cache-varying option is splitting the cache (name tally across all variants) ==="
+          echo "    high 'userlang' => UI language (uselang/prefs); 'canonical' => unfragmented; dateformat/thumbsize => user prefs"
+          sed -E 's/^[^!]*!//' idhash.txt | tr '!' '\n' | sed -E 's/=.*//' | sort | uniq -c | sort -rn
+          echo
+
+          echo "=== Worst-offender page: its cached option-combinations + recorded used-options ==="
+          wp=$(sort pageids.txt | uniq -c | sort -rn | head -1 | awk '{print $2}')
+          echo "page_id = $wp   (resolve title via Special:Redirect/page/$wp)"
+          echo "-- variant suffixes (each line = one cached ParserOutput for this page) --"
+          grep ":idhash:${wp}-" idhash.txt | sed "s/.*:idhash:${wp}-//" | sort | head -40
+          echo "-- idoptions metadata (the cache-varying options this page records) --"
+          okey=$(kubectl exec valkey-sts-0 -- valkey-cli --scan --pattern "*pcache:idoptions:${wp}" | head -1)
+          if [ -n "$okey" ]; then kubectl exec valkey-sts-0 -- valkey-cli GET "$okey" | head -c 1500; echo; else echo "(no idoptions key for page $wp)"; fi
