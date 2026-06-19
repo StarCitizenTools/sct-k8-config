@@ -16,9 +16,15 @@ kind: Deployment
 metadata:
   name: php-mediawiki
 spec:
+  # 2 replicas spread one-per-node so a node loss leaves a Ready php-fpm serving.
+  # Tight fit + single-node-window behaviour explained in PR #33.
+  replicas: 2
   strategy:
     rollingUpdate:
-      maxSurge: 100%
+      # Capacity-aware for a tight cpu:2 pod (see PR #33).
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: php-mediawiki
@@ -30,6 +36,14 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      # One pod per node when possible (soft, so it never blocks scheduling).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: php-mediawiki
       # DNS-resolution hardening: fail fast on lookup failures and trim CoreDNS
       # query volume. Mitigation, not a cure -- see PR #32 for rationale.
       dnsConfig:
@@ -69,6 +83,15 @@ spec:
           image: ghcr.io/starcitizentools/mediawiki:smw-26.06.18.583
           ports:
             - containerPort: 9000
+          # Gate traffic on php-fpm actually listening. TCP-only on purpose: a
+          # DB/DNS-dependent probe would NotReady all replicas at once (see PR #33).
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               memory: "64Mi"

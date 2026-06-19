@@ -15,9 +15,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  # 2 replicas spread one-per-node; gap-free roll via the readiness probe. PR #33.
+  replicas: 2
   strategy:
     rollingUpdate:
-      maxSurge: 100%
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: nginx
@@ -29,6 +33,13 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: nginx
       # DNS-resolution hardening -- see php-mediawiki.yaml / PR #32.
       dnsConfig:
         options:
@@ -52,6 +63,14 @@ spec:
           # command: [nginx-debug, '-g', 'daemon off;']
           ports:
             - containerPort: 80
+          # Gate traffic on nginx listening (TCP :80); keeps the roll gap-free.
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               memory: "128Mi"
