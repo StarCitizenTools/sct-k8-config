@@ -19,6 +19,20 @@ spec:
       securityContext:
         fsGroup: 33
         runAsUser: 33
+      # DNS-resilience hardening (see 2026-06-19 04:40 UTC outage) -- the jobrunner
+      # was the pod whose logs first showed "getaddrinfo for mariadb-service ...
+      # Temporary failure in name resolution". Shorten failed lookups (timeout:2
+      # attempts:2), avoid the glibc dual A/AAAA stall, reduce search-domain expansion
+      # (ndots:2). Mitigation, not a cure; see php-mediawiki.yaml for full rationale.
+      dnsConfig:
+        options:
+          - name: timeout
+            value: "2"
+          - name: attempts
+            value: "2"
+          - name: single-request-reopen
+          - name: ndots
+            value: "2"
       containers:
         - name: jobrunner
           image: ghcr.io/starcitizentools/mediawiki:smw-jobrunner-26.06.18.583
