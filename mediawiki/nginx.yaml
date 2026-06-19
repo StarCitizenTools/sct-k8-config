@@ -29,10 +29,7 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
-      # DNS-resilience hardening (see 2026-06-19 04:40 UTC outage) -- shorten failed
-      # lookups (timeout:2 attempts:2), avoid the glibc dual A/AAAA stall, and reduce
-      # search-domain expansion of external FQDNs (ndots:2). Mitigation, not a cure;
-      # see php-mediawiki.yaml for the full rationale.
+      # DNS-resolution hardening -- see php-mediawiki.yaml / the PR.
       dnsConfig:
         options:
           - name: timeout

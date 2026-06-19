@@ -19,11 +19,7 @@ spec:
       securityContext:
         fsGroup: 33
         runAsUser: 33
-      # DNS-resilience hardening (see 2026-06-19 04:40 UTC outage) -- the jobrunner
-      # was the pod whose logs first showed "getaddrinfo for mariadb-service ...
-      # Temporary failure in name resolution". Shorten failed lookups (timeout:2
-      # attempts:2), avoid the glibc dual A/AAAA stall, reduce search-domain expansion
-      # (ndots:2). Mitigation, not a cure; see php-mediawiki.yaml for full rationale.
+      # DNS-resolution hardening -- see php-mediawiki.yaml / the PR.
       dnsConfig:
         options:
           - name: timeout

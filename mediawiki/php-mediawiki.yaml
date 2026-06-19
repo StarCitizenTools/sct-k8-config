@@ -30,16 +30,8 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
-      # DNS-resilience hardening (see 2026-06-19 04:40 UTC outage): during a node
-      # network blip, pods on the affected node lost cluster DNS and php-fpm workers
-      # hung on getaddrinfo for mariadb-service, producing mass nginx "upstream timed
-      # out". These resolver options shorten each failed lookup (timeout:2 attempts:2
-      # instead of the 5s x default), avoid the glibc dual A/AAAA stall
-      # (single-request-reopen), and cut wasteful search-domain expansion of external
-      # FQDNs (ndots:2 vs the default 5) -- which also lightens load on the single
-      # CoreDNS replica. This is MITIGATION, not a cure: a full DNS outage still fails.
-      # The real fix (NodeLocal DNSCache w/ serve_stale) needs kubectl access to roll
-      # out/back safely and is deferred.
+      # DNS-resolution hardening: fail fast on lookup failures and trim CoreDNS
+      # query volume. Mitigation, not a cure -- see the PR for rationale.
       dnsConfig:
         options:
           - name: timeout
