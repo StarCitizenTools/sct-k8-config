@@ -16,9 +16,21 @@ kind: Deployment
 metadata:
   name: php-mediawiki
 spec:
+  # 2 replicas + soft hostname spread so a node loss/recycle/network blip leaves
+  # a Ready php-fpm serving behind php-service. The single-replica backend's node
+  # dying (or being drained) = full backend outage was the 2026-06-18 20:05 UTC
+  # failure mode. On this 2-node/4-core cluster the replicas land one-per-node;
+  # during a single-node window the replacement may stay Pending (two cpu:2 php
+  # pods will not fit one node alongside the DB tier) -- acceptable, since the
+  # surviving replica keeps serving with no gap.
+  replicas: 2
   strategy:
     rollingUpdate:
-      maxSurge: 100%
+      # Capacity-aware: php requests cpu:2 and the cluster is tight, so the old
+      # maxSurge:100% could not place surge pods on a rollout. Allow one extra and
+      # one unavailable so the roll can make room instead of stalling.
+      maxSurge: 1
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: php-mediawiki
@@ -30,6 +42,17 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      # Prefer one replica per node so a single node failure never takes out all
+      # of php-fpm. Soft (ScheduleAnyway) so it never deadlocks a rollout or
+      # blocks scheduling on the 2-node cluster -- CPU capacity still gates the
+      # second pod during single-node windows.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: php-mediawiki
       # DNS-resolution hardening: fail fast on lookup failures and trim CoreDNS
       # query volume. Mitigation, not a cure -- see PR #32 for rationale.
       dnsConfig:

@@ -15,9 +15,14 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  # 2 replicas + soft hostname spread so an nginx pod or its node failing does not
+  # drop the proxy tier in front of php-fpm. nginx is light (cpu:50m) so this fits
+  # comfortably and rolls with zero downtime (maxUnavailable:0).
+  replicas: 2
   strategy:
     rollingUpdate:
-      maxSurge: 100%
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: nginx
@@ -29,6 +34,13 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: nginx
       # DNS-resolution hardening -- see php-mediawiki.yaml / PR #32.
       dnsConfig:
         options:
