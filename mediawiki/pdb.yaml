@@ -1,12 +1,8 @@
-# PodDisruptionBudgets for the stateless web tier. A voluntary disruption
-# (node drain / LKE node recycle) may then evict at most one replica at a time,
-# keeping one Ready behind the Service throughout -- which is what turns a node
-# recycle from a partial outage into a non-event.
-#
-# These REQUIRE the replicas:2 + topology-spread change in php-mediawiki.yaml /
-# nginx.yaml in this same PR: with a single replica, minAvailable:1 would block
-# node drains entirely (the lone pod can never be evicted), which would stall LKE
-# recycles -- worse than the status quo. Ship them together.
+# Web-tier PodDisruptionBudgets: a node drain/recycle then evicts at most one
+# replica, keeping one Ready. Requires the replicas:2 change in this PR -- a
+# minAvailable:1 PDB on a single replica blocks drains, so if you ever drop back
+# to 1 replica, relax this PDB in the SAME commit (CI doesn't prune and there's
+# no kubectl to delete it). Full rationale in PR #33.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

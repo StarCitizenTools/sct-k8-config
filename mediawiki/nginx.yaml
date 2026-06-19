@@ -15,14 +15,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
-  # 2 replicas + soft hostname spread so an nginx pod or its node failing does not
-  # drop the proxy tier in front of php-fpm. nginx is light (cpu:50m) so this fits
-  # comfortably and rolls with zero downtime (maxUnavailable:0).
+  # 2 replicas spread one-per-node; gap-free roll via the readiness probe. PR #33.
   replicas: 2
   strategy:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: nginx
@@ -64,6 +63,14 @@ spec:
           # command: [nginx-debug, '-g', 'daemon off;']
           ports:
             - containerPort: 80
+          # Gate traffic on nginx listening (TCP :80); keeps the roll gap-free.
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               memory: "128Mi"

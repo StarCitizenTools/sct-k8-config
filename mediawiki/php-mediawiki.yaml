@@ -16,21 +16,15 @@ kind: Deployment
 metadata:
   name: php-mediawiki
 spec:
-  # 2 replicas + soft hostname spread so a node loss/recycle/network blip leaves
-  # a Ready php-fpm serving behind php-service. The single-replica backend's node
-  # dying (or being drained) = full backend outage was the 2026-06-18 20:05 UTC
-  # failure mode. On this 2-node/4-core cluster the replicas land one-per-node;
-  # during a single-node window the replacement may stay Pending (two cpu:2 php
-  # pods will not fit one node alongside the DB tier) -- acceptable, since the
-  # surviving replica keeps serving with no gap.
+  # 2 replicas spread one-per-node so a node loss leaves a Ready php-fpm serving.
+  # Tight fit + single-node-window behaviour explained in PR #33.
   replicas: 2
   strategy:
     rollingUpdate:
-      # Capacity-aware: php requests cpu:2 and the cluster is tight, so the old
-      # maxSurge:100% could not place surge pods on a rollout. Allow one extra and
-      # one unavailable so the roll can make room instead of stalling.
+      # Capacity-aware for a tight cpu:2 pod (see PR #33).
       maxSurge: 1
       maxUnavailable: 1
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: php-mediawiki
@@ -42,10 +36,7 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
-      # Prefer one replica per node so a single node failure never takes out all
-      # of php-fpm. Soft (ScheduleAnyway) so it never deadlocks a rollout or
-      # blocks scheduling on the 2-node cluster -- CPU capacity still gates the
-      # second pod during single-node windows.
+      # One pod per node when possible (soft, so it never blocks scheduling).
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -92,6 +83,15 @@ spec:
           image: ghcr.io/starcitizentools/mediawiki:smw-26.06.18.583
           ports:
             - containerPort: 9000
+          # Gate traffic on php-fpm actually listening. TCP-only on purpose: a
+          # DB/DNS-dependent probe would NotReady all replicas at once (see PR #33).
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               memory: "64Mi"
