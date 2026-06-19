@@ -19,7 +19,7 @@ spec:
       securityContext:
         fsGroup: 33
         runAsUser: 33
-      # DNS-resolution hardening -- see php-mediawiki.yaml / the PR.
+      # DNS-resolution hardening -- see php-mediawiki.yaml / PR #32.
       dnsConfig:
         options:
           - name: timeout

@@ -31,7 +31,7 @@ spec:
       securityContext:
         fsGroup: 33
       # DNS-resolution hardening: fail fast on lookup failures and trim CoreDNS
-      # query volume. Mitigation, not a cure -- see the PR for rationale.
+      # query volume. Mitigation, not a cure -- see PR #32 for rationale.
       dnsConfig:
         options:
           - name: timeout
