@@ -1,0 +1,113 @@
+name: Elasticsearch Diagnostics
+
+# Read-only health check for the single-node Elasticsearch (elasticsearch-es-*)
+# that backs CirrusSearch. Answers "is search broken because an index came back
+# red/unassigned after a node move?" -- the 2026-06-27 reboot relocated the ES
+# StatefulSet pod across nodes, after which full-text search returned
+# `cirrussearch-backend-error` while the stale titlesuggest half-answered.
+#
+# Everything here is GET-only against the ES _cluster/_cat APIs (cluster health,
+# indices, aliases, unassigned shards, allocation explain). Nothing is written,
+# deleted, or reindexed -- safe on the live instance. Run it from the Actions
+# tab and read the step output (no artifacts).
+#
+# How it reaches ES: ES has TLS disabled and anonymous=superuser
+# (mediawiki/elasticsearch.yaml), and its HTTP service is cluster-internal, so
+# we exec into a running php-mediawiki pod (which can already reach ES for
+# CirrusSearch) and fetch over plain HTTP via the php-curl extension -- the
+# MediaWiki image is guaranteed to have php-curl even though it may lack the
+# curl/wget CLIs.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elasticsearch-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes set context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Elasticsearch health
+        run: |
+          set -uo pipefail
+
+          # --- locate a Running php-mediawiki pod (same selector as run-update.yml) ---
+          POD=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$POD" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+
+          # --- discover the ES HTTP service (ECK names it <cluster>-es-http) ---
+          ES_SVC=$(kubectl get svc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
+            | grep -E '\-es-http$' | head -1)
+          ES_SVC=${ES_SVC:-elasticsearch-es-http}
+          ES="http://$ES_SVC:9200"
+
+          echo "php pod : $POD"
+          echo "ES URL  : $ES"
+          echo "ES pod  : $(kubectl get pods -l elasticsearch.k8s.elastic.co/cluster-name=elasticsearch \
+                              -o jsonpath='{range .items[*]}{.metadata.name}{" on "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null)"
+          echo
+
+          # Fetch an ES path from inside the pod via php-curl (no curl/wget CLI needed).
+          es() {
+            kubectl exec "$POD" -c php-mediawiki -- php -r '
+              $c = curl_init($argv[1]);
+              curl_setopt($c, CURLOPT_RETURNTRANSFER, 1);
+              curl_setopt($c, CURLOPT_TIMEOUT, 20);
+              $r = curl_exec($c);
+              if ($r === false) { fwrite(STDERR, "curl error: ".curl_error($c)."\n"); exit(1); }
+              echo $r;
+            ' "$ES$1"
+          }
+
+          echo "::group::Cluster health (status = green / yellow / RED)"
+          es '/_cluster/health?pretty'
+          echo "::endgroup::"
+
+          echo "::group::Indices (sorted by health: red/yellow first)"
+          # columns: health status index uuid pri rep docs.count store.size
+          es '/_cat/indices?v&h=health,status,index,pri,rep,docs.count,store.size&s=health:desc,index'
+          echo "::endgroup::"
+
+          echo "::group::Aliases (which concrete index each CirrusSearch alias points to)"
+          # content / general / titlesuggest are the ones CirrusSearch reads.
+          es '/_cat/aliases?v&h=alias,index,is_write_index'
+          echo "::endgroup::"
+
+          echo "::group::Problem shards (anything not STARTED)"
+          es '/_cat/shards?v&h=index,shard,prirep,state,docs,store,node,unassigned.reason' \
+            | awk 'NR==1 || $0 !~ /STARTED/'
+          echo "::endgroup::"
+
+          echo "::group::Allocation explain (why the first unassigned shard is stuck)"
+          # GET with no body explains one unassigned shard; if all are assigned it
+          # returns a harmless "unable to find any unassigned shards to explain".
+          es '/_cluster/allocation/explain?pretty'
+          echo "::endgroup::"
+
+          echo
+          echo "Interpretation:"
+          echo "  * status RED + an unassigned PRIMARY on scw_prod_content* / *_general*"
+          echo "    => full-text query path is down (matches cirrussearch-backend-error)."
+          echo "  * titlesuggest present but last built before today => stale suggester"
+          echo "    (autocomplete degraded); today's 07:15 UpdateSuggesterIndex cron failed."
+          echo "  * Fixes, escalating: (1) restart ES so it retries allocation;"
+          echo "    (2) rebuild Cirrus indices: UpdateSearchIndexConfig -> ForceSearchIndex"
+          echo "    (--skipLinks --indexOnSkip, then --skipParse) -> UpdateSuggesterIndex."
