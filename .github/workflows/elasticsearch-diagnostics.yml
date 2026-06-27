@@ -1,22 +1,26 @@
 name: Elasticsearch Diagnostics
 
 # Read-only health check for the single-node Elasticsearch (elasticsearch-es-*)
-# that backs CirrusSearch. Answers "is search broken because an index came back
-# red/unassigned after a node move?" -- the 2026-06-27 reboot relocated the ES
-# StatefulSet pod across nodes, after which full-text search returned
-# `cirrussearch-backend-error` while the stale titlesuggest half-answered.
+# that backs CirrusSearch.
 #
-# Everything here is GET-only against the ES _cluster/_cat APIs (cluster health,
-# indices, aliases, unassigned shards, allocation explain). Nothing is written,
-# deleted, or reindexed -- safe on the live instance. Run it from the Actions
-# tab and read the step output (no artifacts).
+# It has two halves:
+#   1. POD & VOLUME STATE (pure kubectl) -- works even when ES is completely down.
+#      This is the important one when the ES pod is stuck Pending/PodInitializing:
+#      it surfaces the describe/events (FailedMount / Multi-Attach / scheduling),
+#      the PVC/PV, any VolumeAttachment pinning the volume to the wrong node, and
+#      the ECK resource + suspend annotation.
+#   2. ES HTTP HEALTH (_cluster/_cat APIs via a php-mediawiki pod) -- only useful
+#      once ES is actually serving on 9200; degrades gracefully to an
+#      "unreachable" note otherwise.
 #
-# How it reaches ES: ES has TLS disabled and anonymous=superuser
-# (mediawiki/elasticsearch.yaml), and its HTTP service is cluster-internal, so
-# we exec into a running php-mediawiki pod (which can already reach ES for
-# CirrusSearch) and fetch over plain HTTP via the php-curl extension -- the
-# MediaWiki image is guaranteed to have php-curl even though it may lack the
-# curl/wget CLIs.
+# Everything here is GET/describe-only -- nothing is written, deleted, or
+# reindexed. To actually restart a wedged ES pod, use the separate, gated
+# "Elasticsearch Recover" workflow. Run from the Actions tab; read the step output.
+#
+# How the HTTP half reaches ES: ES has TLS disabled and anonymous=superuser
+# (mediawiki/elasticsearch.yaml) and its HTTP service is cluster-internal, so we
+# exec into a running php-mediawiki pod and fetch over plain HTTP via the php-curl
+# extension -- the MediaWiki image has php-curl even though it may lack curl/wget.
 on:
   workflow_dispatch:
 
@@ -30,6 +34,9 @@ concurrency:
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
+    env:
+      ES_POD: elasticsearch-es-elasticsearch-0
+      ES_PVC: elasticsearch-data-elasticsearch-es-elasticsearch-0
     steps:
       - uses: azure/setup-kubectl@v4
 
@@ -40,7 +47,56 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
-      - name: Elasticsearch health
+      - name: "Pod & volume state (works even when ES is down)"
+        run: |
+          set -uo pipefail
+
+          echo "::group::Pod summary (-o wide)"
+          kubectl get pod "$ES_POD" -o wide || echo "(pod not found)"
+          echo "::endgroup::"
+
+          echo "::group::Phase, container readiness & node"
+          kubectl get pod "$ES_POD" -o jsonpath='Phase: {.status.phase}{"\n"}Node:  {.spec.nodeName}{"\n"}' 2>/dev/null || true
+          echo
+          echo "init containers (a stuck first one => the data volume is not mounting):"
+          kubectl get pod "$ES_POD" -o jsonpath='{range .status.initContainerStatuses[*]}  {.name}: ready={.ready} state={.state}{"\n"}{end}' 2>/dev/null || true
+          echo "main containers:"
+          kubectl get pod "$ES_POD" -o jsonpath='{range .status.containerStatuses[*]}  {.name}: ready={.ready} state={.state}{"\n"}{end}' 2>/dev/null || true
+          echo "::endgroup::"
+
+          echo "::group::describe pod (events at the bottom show FailedMount / Multi-Attach / FailedScheduling)"
+          kubectl describe pod "$ES_POD" || echo "(pod not found)"
+          echo "::endgroup::"
+
+          echo "::group::Recent events for the pod"
+          { kubectl get events --field-selector involvedObject.name="$ES_POD" --sort-by=.lastTimestamp 2>/dev/null | tail -40; } || echo "(no events)"
+          echo "::endgroup::"
+
+          echo "::group::PVC / PV"
+          kubectl get pvc "$ES_PVC" -o wide || echo "(pvc not found)"
+          PV=$(kubectl get pvc "$ES_PVC" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+          echo "PV: ${PV:-<none>}"
+          [ -n "${PV:-}" ] && kubectl get pv "$PV" -o wide || true
+          echo "::endgroup::"
+
+          echo "::group::VolumeAttachments (a stale one pinning the ES volume to the old node blocks the mount)"
+          kubectl get volumeattachment -o wide 2>/dev/null || echo "(none / no permission)"
+          if [ -n "${PV:-}" ]; then
+            echo
+            echo "Attachments referencing this ES PV ($PV):"
+            kubectl get volumeattachment -o jsonpath='{range .items[*]}{.metadata.name}{"  pv="}{.spec.source.persistentVolumeName}{"  node="}{.spec.nodeName}{"  attached="}{.status.attached}{"\n"}{end}' 2>/dev/null | grep -F "$PV" || echo "  (none)"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::ECK Elasticsearch resource + suspend annotation"
+          kubectl get elasticsearch elasticsearch -o wide 2>/dev/null || echo "(ECK Elasticsearch resource not found)"
+          echo
+          echo "suspend annotations (if present, ECK is deliberately holding the pod in init):"
+          kubectl get elasticsearch elasticsearch -o jsonpath='{.metadata.annotations}' 2>/dev/null | tr ',' '\n' | grep -i suspend || echo "  (none on ES resource)"
+          kubectl get pod "$ES_POD" -o jsonpath='{.metadata.annotations}' 2>/dev/null | tr ',' '\n' | grep -i suspend || echo "  (none on pod)"
+          echo "::endgroup::"
+
+      - name: Elasticsearch HTTP health (best-effort; skipped gracefully if ES is down)
         run: |
           set -uo pipefail
 
@@ -49,8 +105,8 @@ jobs:
             --field-selector=status.phase=Running \
             -o jsonpath='{.items[0].metadata.name}')
           if [ -z "$POD" ]; then
-            echo "::error::No Running php-mediawiki pod found."
-            exit 1
+            echo "::warning::No Running php-mediawiki pod found; skipping HTTP checks."
+            exit 0
           fi
 
           # --- discover the ES HTTP service (ECK names it <cluster>-es-http) ---
@@ -58,23 +114,22 @@ jobs:
             | grep -E '\-es-http$' | head -1)
           ES_SVC=${ES_SVC:-elasticsearch-es-http}
           ES="http://$ES_SVC:9200"
-
           echo "php pod : $POD"
           echo "ES URL  : $ES"
-          echo "ES pod  : $(kubectl get pods -l elasticsearch.k8s.elastic.co/cluster-name=elasticsearch \
-                              -o jsonpath='{range .items[*]}{.metadata.name}{" on "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null)"
           echo
 
-          # Fetch an ES path from inside the pod via php-curl (no curl/wget CLI needed).
+          # Fetch an ES path from inside the pod via php-curl. NEVER returns non-zero:
+          # on a connection failure it prints an "unreachable" marker so this step
+          # stays green and the pod-state step above remains the source of truth.
           es() {
             kubectl exec "$POD" -c php-mediawiki -- php -r '
               $c = curl_init($argv[1]);
               curl_setopt($c, CURLOPT_RETURNTRANSFER, 1);
               curl_setopt($c, CURLOPT_TIMEOUT, 20);
               $r = curl_exec($c);
-              if ($r === false) { fwrite(STDERR, "curl error: ".curl_error($c)."\n"); exit(1); }
+              if ($r === false) { echo "(ES HTTP unreachable: ".curl_error($c).")\n"; exit(0); }
               echo $r;
-            ' "$ES$1"
+            ' "$ES$1" 2>/dev/null || echo "(kubectl exec failed)"
           }
 
           echo "::group::Cluster health (status = green / yellow / RED)"
@@ -82,12 +137,10 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Indices (sorted by health: red/yellow first)"
-          # columns: health status index uuid pri rep docs.count store.size
           es '/_cat/indices?v&h=health,status,index,pri,rep,docs.count,store.size&s=health:desc,index'
           echo "::endgroup::"
 
           echo "::group::Aliases (which concrete index each CirrusSearch alias points to)"
-          # content / general / titlesuggest are the ones CirrusSearch reads.
           es '/_cat/aliases?v&h=alias,index,is_write_index'
           echo "::endgroup::"
 
@@ -97,17 +150,16 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Allocation explain (why the first unassigned shard is stuck)"
-          # GET with no body explains one unassigned shard; if all are assigned it
-          # returns a harmless "unable to find any unassigned shards to explain".
           es '/_cluster/allocation/explain?pretty'
           echo "::endgroup::"
 
           echo
           echo "Interpretation:"
-          echo "  * status RED + an unassigned PRIMARY on scw_prod_content* / *_general*"
-          echo "    => full-text query path is down (matches cirrussearch-backend-error)."
-          echo "  * titlesuggest present but last built before today => stale suggester"
-          echo "    (autocomplete degraded); today's 07:15 UpdateSuggesterIndex cron failed."
-          echo "  * Fixes, escalating: (1) restart ES so it retries allocation;"
-          echo "    (2) rebuild Cirrus indices: UpdateSearchIndexConfig -> ForceSearchIndex"
-          echo "    (--skipLinks --indexOnSkip, then --skipParse) -> UpdateSuggesterIndex."
+          echo "  * Pod Pending/PodInitializing with the first init container stuck and no"
+          echo "    VolumeAttachment for the ES PV on the pod's node => stuck volume mount;"
+          echo "    fix with the 'Elasticsearch Recover' workflow (delete pod -> re-attach)."
+          echo "  * ES up but status RED with an unassigned PRIMARY on scw_prod_content*/"
+          echo "    *_general* => full-text query path down (cirrussearch-backend-error);"
+          echo "    rebuild: UpdateSearchIndexConfig -> ForceSearchIndex -> UpdateSuggesterIndex."
+          echo "  * ES up, indices green, but autocomplete poor => stale titlesuggest;"
+          echo "    the 07:15 UTC daily cron rebuilds it (or run UpdateSuggesterIndex)."
