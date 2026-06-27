@@ -1,0 +1,113 @@
+name: Elasticsearch Recover (restart stuck pod)
+
+# Operator-triggered RECOVERY for the single-node Elasticsearch behind CirrusSearch.
+#
+# Use when the ES pod (elasticsearch-es-elasticsearch-0) is stuck
+# Pending/PodInitializing because its data volume won't mount -- the classic
+# stuck-CSI-attach after an ungraceful node reboot (confirm first with the
+# "Elasticsearch Diagnostics" workflow: first init container stuck + no
+# VolumeAttachment for the ES PV on the pod's node). Deleting the pod makes the
+# StatefulSet/ECK recreate it, which forces the CSI driver to detach and
+# re-attach the volume cleanly.
+#
+# SAFETY:
+#   * Deletes ONLY the ES pod. The data lives on the PVC
+#     (elasticsearch-data-elasticsearch-es-elasticsearch-0), which is NOT touched
+#     -- no data loss. ES is already down when you'd run this, so deleting a
+#     non-serving pod cannot make search worse.
+#   * Gated behind a typed confirmation (confirm=RESTART) so it can't fire by accident.
+#   * The optional VolumeAttachment cleanup only runs if you also tick the box,
+#     and only deletes attachments that reference THIS ES volume.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESTART to confirm deleting the Elasticsearch pod'
+        required: true
+        type: string
+      also_clear_volumeattachment:
+        description: 'Escalation: also delete the stale VolumeAttachment for the ES volume (only if a plain restart did not clear the stuck mount)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elasticsearch-recover
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    env:
+      ES_POD: elasticsearch-es-elasticsearch-0
+      ES_PVC: elasticsearch-data-elasticsearch-es-elasticsearch-0
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes set context
+        uses: Azure/k8s-set-context@v4
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Validate confirmation
+        run: |
+          if [ "$CONFIRM" != "RESTART" ]; then
+            echo "::error::Set the 'confirm' input to exactly RESTART to proceed. Got: '$CONFIRM'"
+            exit 1
+          fi
+          echo "Confirmed -- proceeding to restart $ES_POD."
+
+      - name: Before state
+        run: |
+          set -uo pipefail
+          echo "=== ES pod before ==="
+          kubectl get pod "$ES_POD" -o wide || echo "(pod not found)"
+          PV=$(kubectl get pvc "$ES_PVC" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+          echo "PV: ${PV:-<none>}"
+          echo "=== VolumeAttachments referencing the ES PV ==="
+          kubectl get volumeattachment -o jsonpath='{range .items[*]}{.metadata.name}{"  pv="}{.spec.source.persistentVolumeName}{"  node="}{.spec.nodeName}{"  attached="}{.status.attached}{"\n"}{end}' 2>/dev/null \
+            | grep -F "${PV:-NO_PV}" || echo "  (none referencing ${PV:-<none>})"
+
+      - name: Restart Elasticsearch pod (delete -> ECK recreates)
+        run: |
+          set -uo pipefail
+          echo "Deleting pod $ES_POD (the StatefulSet/ECK operator recreates it)..."
+          kubectl delete pod "$ES_POD" --wait=true || echo "(delete returned non-zero; it may already be gone)"
+
+      - name: Clear stale VolumeAttachment (optional escalation)
+        if: ${{ inputs.also_clear_volumeattachment }}
+        run: |
+          set -uo pipefail
+          PV=$(kubectl get pvc "$ES_PVC" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+          if [ -z "${PV:-}" ]; then echo "No PV resolved; skipping."; exit 0; fi
+          VAS=$(kubectl get volumeattachment -o jsonpath="{range .items[?(@.spec.source.persistentVolumeName=='$PV')]}{.metadata.name}{'\n'}{end}" 2>/dev/null || true)
+          if [ -z "${VAS:-}" ]; then echo "No VolumeAttachment references $PV; nothing to clear."; exit 0; fi
+          for va in $VAS; do
+            echo "Deleting stale VolumeAttachment $va (pv=$PV) to force a clean detach/attach..."
+            kubectl delete volumeattachment "$va" --wait=false || echo "(could not delete $va)"
+          done
+
+      - name: After state (wait up to 3 min for ES to become Ready)
+        run: |
+          set -uo pipefail
+          echo "Waiting for the recreated pod to appear..."
+          for i in $(seq 1 18); do
+            kubectl get pod "$ES_POD" >/dev/null 2>&1 && break
+            sleep 5
+          done
+          echo "Waiting for it to become Ready (up to 180s)..."
+          kubectl wait --for=condition=Ready pod/"$ES_POD" --timeout=180s \
+            || echo "(not Ready within 180s -- check the state below and re-run Elasticsearch Diagnostics; if a VolumeAttachment still pins the volume to the old node, re-run this with the escalation box ticked)"
+          echo
+          echo "=== ES pod after ==="
+          kubectl get pod "$ES_POD" -o wide || true
+          echo
+          echo "Next: re-run 'Elasticsearch Diagnostics' to confirm cluster health is green/yellow."
+          echo "If autocomplete is still poor afterwards, titlesuggest is just stale -- the 07:15 UTC"
+          echo "daily cron rebuilds it, or run CirrusSearch:UpdateSuggesterIndex manually."
