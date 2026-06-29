@@ -8,16 +8,26 @@ data:
         # .github/workflows/kubernetes-deploy.yml when this file changes.
         # error_log /var/log/nginx/debug.log debug;
 
-        upstream php_fpm {
-          server php-service.default.svc.cluster.local:9000;
-          keepalive 32;
-        }
-
         server {
           listen 0.0.0.0:80;
           server_name starcitizen.tools;
           root /var/www/mediawiki;
           index index.php;
+
+          # Resolve the php-fpm upstream at request time instead of once at
+          # config-parse. A static `upstream { server <name> }` is resolved when
+          # nginx (re)starts, so a transient CoreDNS/node blip makes nginx abort
+          # with `[emerg] host not found in upstream` and CrashLoopBackOff
+          # (2026-06-27 outage). A `resolver` + variable upstream defers the
+          # lookup to per-request, re-resolves every `valid=`, and degrades to a
+          # recoverable 502 during a DNS blip -- self-healing once DNS returns.
+          # 10.128.0.10 = kube-dns ClusterIP (stable for the cluster's lifetime).
+          # Trade-off: a variable upstream cannot use an nginx keepalive pool
+          # (that requires a static upstream{} block), so the prior `keepalive 32`
+          # / `fastcgi_keep_conn on` connection pooling to php-fpm is dropped.
+          resolver 10.128.0.10 valid=30s ipv6=off;
+          resolver_timeout 5s;
+          set $php_fpm php-service.default.svc.cluster.local:9000;
 
           client_max_body_size 64M;
 
@@ -55,8 +65,7 @@ data:
             try_files $uri $uri/ /rest.php?$args;
             include fastcgi_params;
             fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
-            fastcgi_pass php_fpm;
-            fastcgi_keep_conn on;
+            fastcgi_pass $php_fpm;
           }
           
           # Location for the wiki's root
@@ -66,8 +75,7 @@ data:
             location ~ \.php$ {
               try_files $uri $uri/ =404; # Don't let php execute non-existent php files
               include fastcgi_params;
-              fastcgi_pass php_fpm;
-              fastcgi_keep_conn on;
+              fastcgi_pass $php_fpm;
               fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             }
           }
@@ -140,8 +148,7 @@ data:
             include fastcgi_params;
             # article path should always be passed to index.php
             fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
-            fastcgi_pass php_fpm;
-            fastcgi_keep_conn on;
+            fastcgi_pass $php_fpm;
           }
 
           # Thumbnail 404 handler, only called by try_files when a thumbnail does not exist
@@ -153,7 +160,6 @@ data:
             # Run the thumb.php script
             include fastcgi_params;
             fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
-            fastcgi_pass php_fpm;
-            fastcgi_keep_conn on;
+            fastcgi_pass $php_fpm;
           }
         }
