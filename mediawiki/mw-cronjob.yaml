@@ -13,7 +13,7 @@ spec:
         spec:
           containers:
             - name: cronjob-mw-daily
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.17.601
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.18.603
               # CPU limit caps the CFS quota so this maintenance job can never
               # consume a whole node and starve the kubelet (see 2026-06-15 outage:
               # an unbounded BestEffort biweekly job pinned all 4 cores -> node
@@ -62,7 +62,7 @@ spec:
         spec:
           containers:
             - name: cronjob-mw-tridaily
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.17.601
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.18.603
               resources:
                 requests:
                   cpu: "250m"
@@ -113,7 +113,7 @@ spec:
             # A true full rebuild (drift repair) is now an on-demand op:
             #   run.php SemanticMediaWiki:rebuildData --force-update --auto-recovery
             - name: cronjob-mw-biweekly
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.17.601
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.18.603
               # This job (SemanticMediaWiki:rebuildData over ~282k entities) was the
               # direct trigger of the 2026-06-15 11:40 UTC outage: BestEffort + no
               # limit -> ~4 of 4 cores -> kubelet wedged. The cap is the load-bearing
@@ -168,7 +168,7 @@ spec:
         spec:
           containers:
             - name: cronjob-mw-monthly
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.17.601
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.07.18.603
               resources:
                 requests:
                   cpu: "250m"
