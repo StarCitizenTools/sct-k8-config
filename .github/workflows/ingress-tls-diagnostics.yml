@@ -26,10 +26,14 @@ jobs:
   ingress-tls-info:
     runs-on: ubuntu-latest
     steps:
-      - uses: azure/setup-kubectl@v4
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
 
       - name: Kubernetes Set Context
-        uses: Azure/k8s-set-context@v4
+        uses: Azure/k8s-set-context@v5
         with:
           cluster-type: generic
           method: kubeconfig
