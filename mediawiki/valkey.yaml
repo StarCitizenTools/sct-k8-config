@@ -76,7 +76,7 @@ spec:
                 # container, so a bad tag would block pod-Ready -- the deploy's
                 # "Verify image tags exist" guard catches that before rollout.
                 - name: redis-exporter
-                  image: oliver006/redis_exporter:v1.86.0
+                  image: oliver006/redis_exporter:v1.87.0
                   args:
                       - '--redis.addr=redis://localhost:6379'
                   ports:
