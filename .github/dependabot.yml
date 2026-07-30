@@ -1,0 +1,67 @@
+version: 2
+
+# Merging a PR here pushes to `smw`, which is the default branch AND the deploy
+# trigger -- every merge rolls the production cluster. So the settings below are
+# deliberately conservative: grouped PRs to keep the count low, and a cooldown so
+# we never take a day-zero release. (actions/checkout v7.0.0 shipped 2026-07-16
+# and v7.0.1 four days later with fixes; a cooldown skips straight to the latter.)
+
+updates:
+  # ---------------------------------------------------------------- actions --
+  # Scans .github/workflows. These drifted a full major behind before anyone
+  # noticed, because nothing was watching them.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    open-pull-requests-limit: 3
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      # One PR for the lot. They are always reviewed together anyway, and the
+      # Azure k8s actions in particular move as a set.
+      github-actions:
+        patterns:
+          - "*"
+
+  # ----------------------------------------------------------------- images --
+  # Docker image tags inside the Kubernetes manifests (Dependabot's `docker`
+  # ecosystem reads Deployment/StatefulSet YAML, not just Dockerfiles).
+  - package-ecosystem: docker
+    directories:
+      - "/mediawiki"
+      - "/plausible"
+      - "/shared"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    open-pull-requests-limit: 5
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    ignore:
+      # Our own images. These are built by sct-docker-images and carry a shared
+      # build stamp (e.g. smw-26.07.30.606 / 26.07.30.606) that must move in
+      # lockstep across mediawiki, jobrunner and nginx. Dependabot would bump
+      # them individually and break that, so the app release process owns them.
+      - dependency-name: "ghcr.io/starcitizentools/*"
+
+      # Stateful singletons on a memory-constrained 2-node cluster: a major here
+      # is a planned migration (data-dir format, schema, memory profile), not
+      # something to land via an auto-merged manifest bump. Minor/patch still
+      # flow through. Drop these two entries if you would rather see the PR and
+      # decide case by case.
+      - dependency-name: "mariadb"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "valkey/valkey"
+        update-types: ["version-update:semver-major"]
+    groups:
+      container-images:
+        patterns:
+          - "*"
