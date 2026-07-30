@@ -18,9 +18,9 @@ updates:
       prefix: ci
     open-pull-requests-limit: 3
     cooldown:
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
+      # Only `default-days` here: the per-semver-level keys are restricted to
+      # SemVer-aware ecosystems, which github-actions and docker are not.
+      default-days: 7
     groups:
       # One PR for the lot. They are always reviewed together anyway, and the
       # Azure k8s actions in particular move as a set.
@@ -42,9 +42,7 @@ updates:
       prefix: deps
     open-pull-requests-limit: 5
     cooldown:
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
+      default-days: 7
     ignore:
       # Our own images. These are built by sct-docker-images and carry a shared
       # build stamp (e.g. smw-26.07.30.606 / 26.07.30.606) that must move in
