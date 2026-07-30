@@ -8,20 +8,24 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: azure/setup-kubectl@v4
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
         id: install
+        with:
+          version: '1.34'
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Kubernetes Set Context
-        uses: Azure/k8s-set-context@v4
+        uses: Azure/k8s-set-context@v5
         with:
           cluster-type: generic
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: MEDIAWIKI Secrets
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: mediawiki-keys
@@ -32,56 +36,56 @@ jobs:
       # env var LocalSettings reads via getenv() and that envFrom exposes:
       #   {"UEX_APITOKEN":"<token>"}
       - name: UEX_APITOKEN Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: uex-keys
           string-data: ${{ secrets.UEX_APITOKEN }}
 
       - name: PRD_DB_PASSWORD Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: prd-db-password
           data: ${{ secrets.PRD_DB_PASSWORD }}
 
       - name: PLAUSIBLE_POSTGRES Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: plausible-postgres
           data: ${{ secrets.PLAUSIBLE_POSTGRES }}
 
       - name: PLAUSIBLE_CONFIG Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: plausible-config
           data: ${{ secrets.PLAUSIBLE_CONFIG }}
       
       - name: BACKUP_KEYS Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: backup-keys
           data: ${{ secrets.BACKUP_KEYS }}
 
       - name: IMAGES_KEYS Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: images-keys
           data: ${{ secrets.IMAGES_KEYS }}
 
       - name: SITEMAP_KEYS Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           secret-type: 'generic'
           secret-name: sitemap-keys
           data: ${{ secrets.SITEMAP_KEYS }}
 
       - name: CLOUDFLARE_API Secret
-        uses: Azure/k8s-create-secret@v5
+        uses: Azure/k8s-create-secret@v6
         with:
           namespace: 'cert-manager'
           secret-type: 'generic'
@@ -331,7 +335,7 @@ jobs:
           done
 
       - name: Deploy to Kubernetes cluster
-        uses: Azure/k8s-deploy@v5
+        uses: Azure/k8s-deploy@v7
         with:
           # Path to the manifest files which will be used for deployment.
           manifests: |
@@ -404,11 +408,15 @@ jobs:
     needs: docker
     if: failure()
     steps:
-      - uses: azure/setup-kubectl@v4
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
         id: install
+        with:
+          version: '1.34'
 
       - name: Kubernetes Set Context
-        uses: Azure/k8s-set-context@v4
+        uses: Azure/k8s-set-context@v5
         with:
           cluster-type: generic
           method: kubeconfig
