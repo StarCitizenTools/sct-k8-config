@@ -61,6 +61,22 @@ data:
             text/plain
             text/xml;
 
+          # WikiSEO's social-image endpoint is permanently broken and unused.
+          # RestSocialMediaImage::run() 500s on !extension_loaded('Imagick')
+          # (imagick is not in the image); installing it would only move the
+          # failure to the next gate, a 503, because $wgWikiSeoEnableSocialImages
+          # is unset (defaults false). Because that flag is false, OpenGraph.php
+          # never emits this URL -- og:image comes from PageImages via
+          # media.starcitizen.tools -- so nothing on the wiki links here. Over
+          # 7d: 488 requests, 99.6% returning 500, ~55% Googlebot-Image and the
+          # rest scrapers, ZERO referers from starcitizen.tools. Crawlers treat
+          # 5xx as transient and retry indefinitely (this has run ~21 months);
+          # 410 is terminal and ends the loop.
+          # `^~` beats the plain /rest.php prefix and suppresses regex matching.
+          location ^~ /rest.php/wikiseo/v1/socialmediaimage {
+            return 410;
+          }
+
           location /rest.php {
             try_files $uri $uri/ /rest.php?$args;
             include fastcgi_params;
