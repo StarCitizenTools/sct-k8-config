@@ -59,7 +59,7 @@ spec:
                 path: site.conf
       containers:
         - name: nginx
-          image: ghcr.io/starcitizentools/nginx:26.09.01.643
+          image: ghcr.io/starcitizentools/nginx:26.09.02.644
           # command: [nginx-debug, '-g', 'daemon off;']
           ports:
             - containerPort: 80
