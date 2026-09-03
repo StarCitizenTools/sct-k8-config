@@ -44,7 +44,7 @@ spec:
         spec:
             containers:
                 - name: valkey
-                  image: valkey/valkey:9.1.1-alpine
+                  image: valkey/valkey:9.1.2-alpine
                   command:
                       - valkey-server
                       - '/usr/local/etc/valkey/valkey.conf'
@@ -76,7 +76,7 @@ spec:
                 # container, so a bad tag would block pod-Ready -- the deploy's
                 # "Verify image tags exist" guard catches that before rollout.
                 - name: redis-exporter
-                  image: oliver006/redis_exporter:v1.88.0
+                  image: oliver006/redis_exporter:v1.90.0
                   args:
                       - '--redis.addr=redis://localhost:6379'
                   ports:
