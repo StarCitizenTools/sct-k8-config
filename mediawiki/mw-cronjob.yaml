@@ -9,8 +9,26 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # The script runs every step and exits non-zero if any failed, so a retry
+      # would re-run the expensive SMW steps that already succeeded. For a daily
+      # job the next scheduled run is the retry.
+      # restartPolicy: Never (below) rather than OnFailure: with OnFailure the
+      # kubelet still fires one in-place restart before the controller honours
+      # backoffLimit: 0, and the controller then deletes the pod -- Never gives
+      # zero wasted restarts and keeps the failed pod for inspection.
+      # The deadline only catches a genuine hang: concurrencyPolicy Forbid plus a
+      # 24h schedule already prevent overlap, and these steps have not completed
+      # since 2026-08-30 so their real runtime is unknown. Generous on purpose --
+      # tripping it SIGKILLs the pod, skipping later steps silently, which is the
+      # bug this PR exists to remove. Tighten once a run has been measured.
+      backoffLimit: 0
+      activeDeadlineSeconds: 21600
       template:
         spec:
+          volumes:
+            - name: scripts-vol
+              configMap:
+                name: maintenance-scripts
           containers:
             - name: cronjob-mw-daily
               image: ghcr.io/starcitizentools/mediawiki:smw-26.09.05.650
@@ -35,17 +53,12 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
-              command: ["/bin/sh"]
-              args:
-                - -c
-                - >-
-                  php /var/www/mediawiki/maintenance/run.php initSiteStats.php --update &&
-                  php /var/www/mediawiki/maintenance/run.php CirrusSearch:UpdateSuggesterIndex &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --shallow-update &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:disposeOutdatedEntities &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildPropertyStatistics &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildConceptCache --update --create
-          restartPolicy: OnFailure
+              volumeMounts:
+                - name: scripts-vol
+                  mountPath: /scripts
+                  readOnly: true
+              command: ["/bin/sh", "/scripts/mw-daily.sh"]
+          restartPolicy: Never
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -79,6 +92,8 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
+              # Single step, so there is no chain to get wrong and no script.
+              # Move it to scripts/ over the shared runner if a second is added.
               command: ["/bin/sh"]
               args:
                 - -c
@@ -98,19 +113,25 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # These retries are NEWLY reachable: the old chain's `|| echo` swallowed a
+      # failure in every step before rebuildData, so the Job could not fail. A
+      # retry re-runs the whole script including rebuildData, and this is the job
+      # that wedged a node on 2026-06-15, so bound it. activeDeadlineSeconds is
+      # wall-clock across all attempts, so it caps the total either way.
+      # restartPolicy stays OnFailure so rebuildData's --auto-recovery can resume
+      # an in-place restart after an eviction or OOM kill.
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
       template:
         spec:
+          volumes:
+            - name: scripts-vol
+              configMap:
+                name: maintenance-scripts
           containers:
-            # rebuildData below is incremental, not a full re-parse:
-            #  --revision-mode   only re-parses entities whose page revision changed
-            #                    (smw_rev != latest); the unchanged majority is skipped.
-            #  --auto-recovery   checkpoints progress so an OnFailure restart resumes
-            #                    instead of starting from entity 0.
-            #  --skip-dispose    the daily job already runs disposeOutdatedEntities.
-            #  --ignore-exceptions  a bad Lua/parser page is logged + skipped, not fatal.
-            # The old `-d 100` was a per-entity 100ms usleep (~7.85h over ~282k entities)
-            # and is removed; the cron pod's CPU is bounded by k8s limits instead.
-            # A true full rebuild (drift repair) is now an on-demand op:
+            # Steps live in scripts/mw-biweekly.sh; the rebuildData flags are
+            # explained there. A true full rebuild (drift repair) stays an
+            # on-demand op:
             #   run.php SemanticMediaWiki:rebuildData --force-update --auto-recovery
             - name: cronjob-mw-biweekly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.09.05.650
@@ -135,21 +156,11 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
-              command: ["/bin/sh"]
-              args:
-                - -c
-                - >-
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Ancientpages &&
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Deadendpages &&
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Fewestrevisions &&
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostlinked &&
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Mostrevisions &&
-                  php /var/www/mediawiki/maintenance/run.php updateSpecialPages --override --only=Wantedpages &&
-                  php /var/www/mediawiki/maintenance/run.php initSiteStats --update --active &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:rebuildData --revision-mode --auto-recovery --skip-dispose --ignore-exceptions --exception-log /tmp/smw-rebuild --report-runtime
-                  || echo "[biweekly] rebuildData exited non-zero: logged parser exceptions were skipped, the run still completed -- not failing the job"
-                  &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-import
+              volumeMounts:
+                - name: scripts-vol
+                  mountPath: /scripts
+                  readOnly: true
+              command: ["/bin/sh", "/scripts/mw-biweekly.sh"]
           restartPolicy: OnFailure
 
 ---
@@ -166,6 +177,10 @@ spec:
     spec:
       template:
         spec:
+          volumes:
+            - name: scripts-vol
+              configMap:
+                name: maintenance-scripts
           containers:
             - name: cronjob-mw-monthly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.09.05.650
@@ -185,12 +200,9 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
-              command: ["/bin/sh"]
-              args:
-                - -c
-                - >-
-                  php /var/www/mediawiki/maintenance/run.php cleanupUploadStash &&
-                  php /var/www/mediawiki/maintenance/run.php cleanupWatchlist --fix &&
-                  php /var/www/mediawiki/maintenance/run.php refreshLinks --dfn-only &&
-                  php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:removeDuplicateEntities
+              volumeMounts:
+                - name: scripts-vol
+                  mountPath: /scripts
+                  readOnly: true
+              command: ["/bin/sh", "/scripts/mw-monthly.sh"]
           restartPolicy: OnFailure
