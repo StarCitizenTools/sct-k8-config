@@ -1,0 +1,67 @@
+name: Bump app images
+
+# Opens a PR that moves every manifest to one sct-docker-images build stamp.
+# Merging the PR (push to smw) is what deploys. Triggered automatically by the
+# image build in sct-docker-images (repository_dispatch) or by hand with a
+# stamp, e.g. to roll back to an older build.
+on:
+  repository_dispatch:
+    types: [app-images-built]
+  workflow_dispatch:
+    inputs:
+      stamp:
+        description: "Build stamp, e.g. 26.09.09.653"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-app-images
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Rewrite manifests
+        id: rewrite
+        env:
+          STAMP: ${{ github.event.inputs.stamp || github.event.client_payload.stamp }}
+        run: |
+          set -euo pipefail
+          [ -n "$STAMP" ] || { echo "::error::No build stamp given."; exit 1; }
+          ./update-images.sh "$STAMP"
+          if git diff --quiet; then
+            echo "Manifests already at ${STAMP}; nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the PR
+        if: steps.rewrite.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAMP: ${{ steps.rewrite.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          branch="bump-app-images/${STAMP}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -am "Bump Docker images to ${STAMP}"
+          # Force: a re-run for the same stamp rewrites the same branch.
+          git push --force origin "$branch"
+          if gh pr list --head "$branch" --state open --json number --jq 'length' | grep -qx 0; then
+            gh pr create --base smw --head "$branch" \
+              --title "Bump Docker images to ${STAMP}" \
+              --body "Moves every manifest to build stamp \`${STAMP}\` (mediawiki, jobrunner and nginx together). Merging deploys."
+          else
+            echo "PR for ${branch} already open; branch updated."
+          fi
