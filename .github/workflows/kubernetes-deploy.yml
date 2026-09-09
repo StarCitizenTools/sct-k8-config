@@ -91,13 +91,14 @@ jobs:
           sh -n scripts/*.sh
           shellcheck -s sh scripts/*.sh
 
-      # Generated, not committed as a manifest, so the script stays a real .sh
-      # file that the step above can lint. Must precede k8s-deploy.
-      - name: Sitemap script ConfigMap
+      # Generated, not committed as a manifest, so the scripts stay real .sh
+      # files that the step above can lint. One key per file, so adding a script
+      # needs no change here. Must precede k8s-deploy.
+      - name: Maintenance scripts ConfigMap
         run: |
           set -euo pipefail
-          kubectl create configmap sitemap-config \
-            --from-file=generate-sitemap.sh=scripts/generate-sitemap.sh \
+          kubectl create configmap maintenance-scripts \
+            --from-file=scripts/ \
             --namespace=default \
             --dry-run=client -o yaml | kubectl apply -f -
 
