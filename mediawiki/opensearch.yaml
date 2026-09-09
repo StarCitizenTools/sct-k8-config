@@ -27,6 +27,14 @@ spec:
       labels:
         app: opensearch
     spec:
+      # The PVC mounts root-owned, but the image runs as uid/gid 1000
+      # (opensearch), so without this OpenSearch cannot write its own data
+      # directory and dies on startup with
+      #   java.nio.file.AccessDeniedException: /usr/share/opensearch/data/...
+      # fsGroup makes the kubelet chgrp the volume to that GID and mark it
+      # group-writable. Same mechanism as backup-cronjob.yaml's fsGroup: 33.
+      securityContext:
+        fsGroup: 1000
       initContainers:
         # Same requirement as elasticsearch.yaml: Lucene needs a high mmap count.
         # busybox, NOT the OpenSearch image: that image ships no sysctl binary
