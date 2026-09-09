@@ -2,7 +2,7 @@
 ☸️
 <h1>Star Citizen Wiki Kubernetes</h1>
 
-[Docker Hub](https://hub.docker.com/r/starcitizentools/mediawiki) | [Docker images](https://github.com/StarCitizenTools/sct-docker-images)
+[Docker images](https://github.com/StarCitizenTools/sct-docker-images)
 </div>
 
 The Kubernetes configuration powering https://starcitizen.tools
