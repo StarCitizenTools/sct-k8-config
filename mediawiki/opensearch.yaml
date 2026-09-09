@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+spec:
+  clusterIP: None
+  selector:
+    app: opensearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+spec:
+  serviceName: opensearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensearch
+  template:
+    metadata:
+      labels:
+        app: opensearch
+    spec:
+      initContainers:
+        # Same requirement as elasticsearch.yaml: Lucene needs a high mmap count.
+        # Uses the OpenSearch image rather than pulling a second one, mirroring
+        # elasticsearch.yaml where the sysctl initContainer inherits the ES image.
+        - name: sysctl
+          image: opensearchproject/opensearch:2.19.5
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
+        # CirrusSearch 1.46 emits the `truncate_norm` token filter
+        # unconditionally and only this plugin provides it, so without this the
+        # wiki cannot create a search index at all. The plugin descriptor pins
+        # opensearch.version=2.19.5 -- OpenSearch refuses a plugin built for any
+        # other version, so this tag and this URL move together or not at all.
+        #
+        # It installs into the image's own plugins dir and then copies the WHOLE
+        # directory into the shared volume, rather than mounting the volume over
+        # /usr/share/opensearch/plugins directly: that path already contains the
+        # plugins shipped in the image, and mounting an empty volume over it
+        # would hide them from the running node.
+        - name: install-plugin
+          image: opensearchproject/opensearch:2.19.5
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              /usr/share/opensearch/bin/opensearch-plugin install --batch \
+                https://repo1.maven.org/maven2/org/wikimedia/search/opensearch-extra/2.19.5-wmf2/opensearch-extra-2.19.5-wmf2.zip
+              cp -a /usr/share/opensearch/plugins/. /shared-plugins/
+              ls /shared-plugins
+          volumeMounts:
+            - name: plugins
+              mountPath: /shared-plugins
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.19.5
+          env:
+            - name: discovery.type
+              value: single-node
+            # Matches the existing Elasticsearch setup: TLS off, no auth, only
+            # reachable cluster-internally via the headless Service above.
+            - name: DISABLE_SECURITY_PLUGIN
+              value: "true"
+            - name: DISABLE_INSTALL_DEMO_CONFIG
+              value: "true"
+            - name: cluster.name
+              value: opensearch
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+            # LUCENE-8811 made max_clause_count apply globally rather than
+            # per-bool in OpenSearch 2.x, so wildcard searches like a*b fail
+            # without raising it (upstream T431086).
+            - name: indices.query.bool.max_clause_count
+              value: "10240"
+          ports:
+            - containerPort: 9200
+          # The whole corpus is under 1GB (content 453MB + general 292MB +
+          # titlesuggest 4.4MB), so this is sized to fit rather than to grow.
+          # The nodes are chronically memory-over-committed; keep the heap and
+          # the limit in step if either is ever raised.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "768Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/opensearch/data
+            - name: plugins
+              mountPath: /usr/share/opensearch/plugins
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 30
+      volumes:
+        - name: plugins
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
