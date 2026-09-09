@@ -4,7 +4,11 @@ set -u
 . /scripts/_maintenance.sh
 
 run initSiteStats             initSiteStats.php --update
-run rebuildData               SemanticMediaWiki:rebuildData --shallow-update
+# Still `run`, not run_soft: SMW exits non-zero only when it actually logged an
+# exception, so a red Job here means real data to fix, not a flaky step.
+run rebuildData               SemanticMediaWiki:rebuildData --shallow-update \
+                              --ignore-exceptions --exception-log /tmp/smw-rebuild
+dump_exception_log /tmp/smw-rebuild
 run disposeOutdatedEntities   SemanticMediaWiki:disposeOutdatedEntities
 run rebuildPropertyStatistics SemanticMediaWiki:rebuildPropertyStatistics
 run rebuildConceptCache       SemanticMediaWiki:rebuildConceptCache --update --create

@@ -46,6 +46,20 @@ run_soft() {
   fi
 }
 
+# --exception-log writes into the pod's ephemeral /tmp, which is unreadable
+# without kubectl, so cat it into the job output.
+dump_exception_log() {
+  dir=$1
+  found=0
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    found=1
+    echo "::: exception log: $f"
+    cat "$f"
+  done
+  [ "$found" -eq 1 ] || echo "::: no exceptions logged"
+}
+
 finish() {
   if [ "$fail" -ne 0 ]; then
     # Name them: the operator triages this through Loki, where scrolling back
