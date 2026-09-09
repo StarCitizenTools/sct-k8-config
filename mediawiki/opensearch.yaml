@@ -29,10 +29,11 @@ spec:
     spec:
       initContainers:
         # Same requirement as elasticsearch.yaml: Lucene needs a high mmap count.
-        # Uses the OpenSearch image rather than pulling a second one, mirroring
-        # elasticsearch.yaml where the sysctl initContainer inherits the ES image.
+        # busybox, NOT the OpenSearch image: that image ships no sysctl binary
+        # at all (verified -- not on PATH, not in /sbin or /usr/sbin), so using
+        # it here crash-loops the pod with "sysctl: command not found".
         - name: sysctl
-          image: opensearchproject/opensearch:2.19.5
+          image: busybox:1.36
           securityContext:
             privileged: true
             runAsUser: 0
