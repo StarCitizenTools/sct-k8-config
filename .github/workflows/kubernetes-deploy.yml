@@ -88,8 +88,21 @@ jobs:
       - name: Lint shell scripts
         run: |
           set -euo pipefail
-          sh -n scripts/*.sh
+          # One at a time: `sh -n a.sh b.sh` parses only a.sh and passes the
+          # rest as positional parameters, so it silently skips every file
+          # after the first.
+          for f in scripts/*.sh; do
+            echo "checking $f"
+            sh -n "$f"
+          done
           shellcheck -s sh scripts/*.sh
+          # The ConfigMap below globs the directory, so a renamed or deleted
+          # script drops its key silently and the consuming pod then fails to
+          # mount at 01:30. Fail here instead.
+          for required in scripts/generate-sitemap.sh scripts/_maintenance.sh \
+                          scripts/mw-daily.sh scripts/mw-biweekly.sh scripts/mw-monthly.sh; do
+            test -f "$required" || { echo "::error::missing $required (a CronJob mounts it by key)"; exit 1; }
+          done
 
       # Generated, not committed as a manifest, so the scripts stay real .sh
       # files that the step above can lint. One key per file, so adding a script
@@ -101,6 +114,9 @@ jobs:
             --from-file=scripts/ \
             --namespace=default \
             --dry-run=client -o yaml | kubectl apply -f -
+          # Superseded by maintenance-scripts. CI applies without prune and this
+          # was never a manifest, so nothing else will ever remove it.
+          kubectl delete configmap sitemap-config -n default --ignore-not-found
 
       - name: CLOUDFLARE_API Secret
         uses: Azure/k8s-create-secret@v6

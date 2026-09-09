@@ -9,11 +9,20 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      # The script now runs every step and exits non-zero if any failed, so a
-      # retry would re-run the expensive SMW steps that already succeeded. For a
-      # daily job the next scheduled run is the retry.
+      # The script runs every step and exits non-zero if any failed, so a retry
+      # would re-run the expensive SMW steps that already succeeded. For a daily
+      # job the next scheduled run is the retry.
+      # restartPolicy: Never (below) rather than OnFailure: with OnFailure the
+      # kubelet still fires one in-place restart before the controller honours
+      # backoffLimit: 0, and the controller then deletes the pod -- Never gives
+      # zero wasted restarts and keeps the failed pod for inspection.
+      # The deadline only catches a genuine hang: concurrencyPolicy Forbid plus a
+      # 24h schedule already prevent overlap, and these steps have not completed
+      # since 2026-08-30 so their real runtime is unknown. Generous on purpose --
+      # tripping it SIGKILLs the pod, skipping later steps silently, which is the
+      # bug this PR exists to remove. Tighten once a run has been measured.
       backoffLimit: 0
-      activeDeadlineSeconds: 10800
+      activeDeadlineSeconds: 21600
       template:
         spec:
           volumes:
@@ -49,7 +58,7 @@ spec:
                   mountPath: /scripts
                   readOnly: true
               command: ["/bin/sh", "/scripts/mw-daily.sh"]
-          restartPolicy: OnFailure
+          restartPolicy: Never
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -83,6 +92,8 @@ spec:
                     name: images-keys
                 - secretRef:
                     name: uex-keys
+              # Single step, so there is no chain to get wrong and no script.
+              # Move it to scripts/ over the shared runner if a second is added.
               command: ["/bin/sh"]
               args:
                 - -c
@@ -102,6 +113,15 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # These retries are NEWLY reachable: the old chain's `|| echo` swallowed a
+      # failure in every step before rebuildData, so the Job could not fail. A
+      # retry re-runs the whole script including rebuildData, and this is the job
+      # that wedged a node on 2026-06-15, so bound it. activeDeadlineSeconds is
+      # wall-clock across all attempts, so it caps the total either way.
+      # restartPolicy stays OnFailure so rebuildData's --auto-recovery can resume
+      # an in-place restart after an eviction or OOM kill.
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
       template:
         spec:
           volumes:

@@ -6,9 +6,15 @@
 # and logs nothing about them. A `;` chain is also wrong: it hides the failure.
 # Run every step, report each, fail the Job at the end if any hard step failed.
 #
+# There is deliberately no "stop the run here" primitive: none of these jobs
+# has a genuinely dependent step. If one is ever added, add a run_or_exit
+# helper -- do NOT write `&&` inside a run call, as it would be passed through
+# to the maintenance script as an argument.
+#
 # Source with: . /scripts/_maintenance.sh
 
 fail=0
+failed_steps=""
 
 # run <label> <maintenance script> [args...]  -- a failure fails the Job
 run() {
@@ -20,6 +26,7 @@ run() {
   else
     rc=$?
     echo "::: $name FAILED (exit $rc)"
+    failed_steps="$failed_steps $name"
     fail=1
   fi
 }
@@ -41,7 +48,9 @@ run_soft() {
 
 finish() {
   if [ "$fail" -ne 0 ]; then
-    echo "::: one or more steps failed"
+    # Name them: the operator triages this through Loki, where scrolling back
+    # through six steps to find which one broke is the expensive part.
+    echo "::: FAILED steps:$failed_steps"
   else
     echo "::: all steps OK"
   fi
