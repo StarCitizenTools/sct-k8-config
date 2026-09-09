@@ -58,7 +58,11 @@ spec:
               set -e
               /usr/share/opensearch/bin/opensearch-plugin install --batch \
                 https://repo1.maven.org/maven2/org/wikimedia/search/opensearch-extra/2.19.5-wmf2/opensearch-extra-2.19.5-wmf2.zip
-              cp -a /usr/share/opensearch/plugins/. /shared-plugins/
+              # `/*` not `/.` -- `cp -a src/. dst/` tries to apply the source
+              # directory's own attributes to the mount point, which the
+              # non-root container user cannot do:
+              #   cp: preserving times for '/shared-plugins/.': Operation not permitted
+              cp -a /usr/share/opensearch/plugins/* /shared-plugins/
               ls /shared-plugins
           volumeMounts:
             - name: plugins
