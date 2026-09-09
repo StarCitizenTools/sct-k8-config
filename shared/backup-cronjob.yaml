@@ -162,6 +162,12 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
+      # The command now exits non-zero on failure, so the Job genuinely fails.
+      # 2 retries cover a transient DB/S3 blip; beyond that the failure is
+      # deterministic and retrying only burns node CPU. activeDeadlineSeconds
+      # stops a hung run from holding the concurrencyPolicy: Forbid lock all day.
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
       template:
         metadata:
           labels:
@@ -182,7 +188,15 @@ spec:
           containers:
           - name: cronjob-sitemap
             image: ghcr.io/starcitizentools/mediawiki:smw-26.09.05.650
+            # PHP's own memory_limit (--memory-limit below) must stay well UNDER
+            # this cgroup limit: a PHP fatal is logged and exits non-zero, a cgroup
+            # OOMKill is a silent SIGKILL. Requests are set explicitly and low so
+            # this 1-min/day job reserves 192Mi instead of the full 512Mi on the
+            # memory-over-committed 2-node cluster; the limit still caps blast radius.
             resources:
+              requests:
+                memory: "192Mi"
+                cpu: "100m"
               limits:
                 memory: "512Mi"
                 cpu: "0.5"
@@ -202,4 +216,68 @@ spec:
             command:
             - /bin/sh
             - -c
-            - php /var/www/mediawiki/maintenance/run.php generateSitemap --memory-limit=50M --fspath=/tmp/dump/ --identifier=starcitizentools --server=https://starcitizen.tools --compress=no --skip-redirects;sed -i 's/starcitizen.tools/sitemap.starcitizen.tools/g' /tmp/dump/sitemap-index-starcitizentools.xml;s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg /tmp/dump/* s3://sitemap.starcitizen.tools
+            - |-
+              set -e
+              DUMP=/tmp/dump
+              IDX="$DUMP/sitemap-index-starcitizentools.xml"
+
+              # restartPolicy: OnFailure restarts the container in place and reuses
+              # the same emptyDir, so a previous attempt's output survives. Clear it,
+              # or a leftover higher-numbered shard from a bigger earlier run passes
+              # the gate and gets published as an instant orphan.
+              rm -f "$DUMP"/sitemap-*.xml
+
+              # MW 1.46 (upstream 08e4436f) rebuilt generateSitemap around
+              # SitemapGenerator::getXml(), which buffers a whole batch of <url>
+              # entries in one PHP string instead of streaming each row to disk.
+              # Peak heap went O(1) -> O(batch); the old --memory-limit=50M then
+              # fataled at SitemapGenerator.php:256 every day from 2026-08-30.
+              # 256M is ~4.5x the permanent worst case (~56MiB: ~40MiB MW+SMW CLI
+              # bootstrap + ~3.5MiB buffered result set + ~12MiB peak string at the
+              # built-in 50,000-URL batch cap) and still half the 512Mi cgroup limit.
+              # Do NOT drop this flag: without it MaintenanceRunner sets memory_limit
+              # to -1 (unlimited), trading a logged PHP fatal for a silent OOMKill.
+              php /var/www/mediawiki/maintenance/run.php generateSitemap \
+                --memory-limit=256M \
+                --fspath="$DUMP/" \
+                --identifier=starcitizentools \
+                --server=https://starcitizen.tools \
+                --compress=no \
+                --skip-redirects
+
+              # Rewrite ONLY the index: its <loc> entries must point at the bucket
+              # host that serves the shards, while the shards' own <loc> entries must
+              # stay canonical wiki URLs. $wgCanonicalServer is unset (LocalSettings
+              # sets only $wgServer), so --server cannot be used to split these two.
+              # Pattern is anchored on the scheme so it is idempotent; the old
+              # unanchored 's/starcitizen.tools/...' yielded sitemap.sitemap.* if
+              # ever applied twice.
+              sed -i 's|https://starcitizen\.tools/|https://sitemap.starcitizen.tools/|g' "$IDX"
+
+              # Sanity gate: never publish truncated output over good output.
+              grep -q '</sitemapindex>' "$IDX" || { echo "FATAL: index has no closing </sitemapindex> - generator died mid-run, refusing to publish"; exit 1; }
+              grep -q '<loc>https://sitemap\.starcitizen\.tools/' "$IDX" || { echo "FATAL: index has no <sitemap> entries - refusing to publish"; exit 1; }
+              n=0
+              for f in "$DUMP"/sitemap-starcitizentools-*.xml; do
+                [ -s "$f" ] || { echo "FATAL: sitemap shard missing or empty: $f - refusing to publish"; exit 1; }
+                grep -q '</urlset>' "$f" || { echo "FATAL: sitemap shard truncated (no </urlset>): $f - refusing to publish"; exit 1; }
+                # A well-formed but EMPTY <urlset> is the one degraded output that
+                # passes every structural check. SitemapGenerator.php:218 emits
+                # exactly that when $wgSitemapNamespaces resolves to [], so an
+                # unrelated config change could silently republish a 0-URL sitemap
+                # over 42k good URLs. Assert content, not just well-formedness.
+                grep -q '<url>' "$f" || { echo "FATAL: shard has ZERO urls: $f - refusing to publish"; exit 1; }
+                n=$((n + 1))
+              done
+              # The || true is load-bearing: bare grep -c exits 1 when the count is
+              # 0, which under set -e would abort the job with no message at all.
+              total=$(cat "$DUMP"/sitemap-starcitizentools-*.xml | grep -c '<url>' || true)
+              [ "$total" -ge 20000 ] || { echo "FATAL: only $total URLs (expected ~42000) - refusing to publish"; exit 1; }
+              echo "sitemap OK: $n shard(s), $total urls, index $(wc -c < "$IDX") bytes"
+
+              # Shards FIRST, index LAST. "$DUMP"/* would glob the index ahead of the
+              # shards it references ('sitemap-index-' sorts before 'sitemap-starcitizentools-'),
+              # and with set -e a mid-upload s3cmd failure would leave the new index
+              # live pointing at shards that were never uploaded.
+              s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg "$DUMP"/sitemap-starcitizentools-*.xml s3://sitemap.starcitizen.tools
+              s3cmd put --access_key=${SITEMAP_ACCESS_KEY} --secret_key=${SITEMAP_SECRET_KEY} -f --config=/www-data/.s3cfg "$IDX" s3://sitemap.starcitizen.tools
