@@ -1,0 +1,106 @@
+name: Run CirrusSearch maintenance
+
+# CirrusSearch index operations need the wiki's config and DB credentials, so
+# this execs into a live php-mediawiki pod -- the same approach as
+# run-update.yml. That pod already has the image, the mounted config and every
+# secret wired in via envFrom, so no Job spec is needed.
+#
+# --cluster selects which entry of $wgCirrusSearchClusters to act on, which is
+# what makes it possible to build indices on a new backend while the old one
+# keeps serving live traffic.
+#
+# Nothing here is gated on a typed CronJob name because the scripts differ
+# wildly in blast radius: Version is read-only, UpdateSearchIndexConfig
+# --startOver DELETES AND RECREATES indices. The confirm input is there to make
+# the operator re-read which one they picked.
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Which CirrusSearch maintenance script to run
+        required: true
+        default: Version
+        type: choice
+        options:
+          - Version
+          - UpdateSearchIndexConfig
+          - ForceSearchIndex
+          - UpdateSuggesterIndex
+      cluster:
+        description: Target cluster name from $wgCirrusSearchClusters
+        required: true
+        default: opensearch
+        type: string
+      extra_args:
+        description: "Additional args, e.g. --startOver or --skipLinks --indexOnSkip"
+        required: false
+        default: ''
+        type: string
+      confirm:
+        description: Type the script name again to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run-search-maintenance
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      SCRIPT: ${{ inputs.script }}
+      CLUSTER: ${{ inputs.cluster }}
+      EXTRA_ARGS: ${{ inputs.extra_args }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "$SCRIPT" ]; then
+            echo "::error::confirm ('$CONFIRM') must exactly match the selected script ('$SCRIPT')."
+            exit 1
+          fi
+
+      - name: Show the target cluster
+        run: |
+          set -euo pipefail
+          echo "script  : CirrusSearch:$SCRIPT"
+          echo "cluster : $CLUSTER"
+          echo "args    : ${EXTRA_ARGS:-<none>}"
+          echo
+          echo "NOTE: --cluster selects an entry of \$wgCirrusSearchClusters as"
+          echo "deployed to the cluster (the last merge to smw), not this branch."
+
+      - name: Run
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "pod: $pod"
+          # EXTRA_ARGS is deliberately unquoted so multiple args word-split.
+          # shellcheck disable=SC2086
+          kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php "CirrusSearch:$SCRIPT" \
+              --cluster "$CLUSTER" $EXTRA_ARGS
