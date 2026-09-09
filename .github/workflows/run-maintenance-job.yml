@@ -1,0 +1,227 @@
+name: Run maintenance job now
+
+# Runs a maintenance CronJob immediately, without waiting for its schedule.
+#
+# `kubectl create job --from=cronjob/<name>` clones the CronJob's jobTemplate
+# into a one-off Job, so the run uses exactly the spec currently in the repo --
+# same image, command, resources, backoffLimit and activeDeadlineSeconds. That
+# makes it the honest way to verify a change to a maintenance job instead of
+# waiting a day (or, for the biweekly, two weeks).
+#
+# The alternative -- temporarily editing `schedule:` and reverting it -- is
+# worse: it has to be remembered, and `startingDeadlineSeconds` is unset, so a
+# schedule set to a minute already past can make the controller fire an
+# immediate unpredictable catch-up run.
+#
+# SAFETY:
+#   * Refuses to start if a Job for that CronJob is already active.
+#     `concurrencyPolicy: Forbid` governs only CronJob-created Jobs -- it does
+#     NOT stop a manually created one overlapping a scheduled run, so this
+#     check is doing real work, not decoration. Two concurrent
+#     SemanticMediaWiki:rebuildData runs is exactly the 2026-06-15 shape.
+#   * The Job is named "<cronjob>-manual-<run_id>", which the "Abort maintenance
+#     job" workflow also matches, so a run started here can be stopped there.
+#   * Logs stream into this run's output. The Job object is deleted once it
+#     reaches a terminal state -- the operator has no kubectl, so the Actions
+#     log is the only view of it anyway. On timeout it is deliberately left
+#     running; use "Abort maintenance job" to stop it.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type the CronJob name again to confirm (e.g. cronjob-sitemap)
+        required: true
+        type: string
+      cronjob:
+        description: Which maintenance CronJob to run now
+        required: true
+        default: cronjob-sitemap
+        type: choice
+        options:
+          - cronjob-sitemap
+          - cronjob-mw-daily
+          - cronjob-mw-tridaily
+          - cronjob-mw-monthly
+          - cronjob-mw-biweekly
+          - cronjob-mariadb-backup
+      # A choice, not a string: this value reaches an arithmetic context, where
+      # an empty value silently evaluates to 0 (reporting a completed job as a
+      # timeout) and a crafted value like RANDOM[$(...)] executes a command on a
+      # runner holding the kubeconfig. A fixed set cannot express either.
+      timeout_minutes:
+        description: How long to wait for it to finish before giving up (the Job keeps running)
+        required: false
+        default: '30'
+        type: choice
+        options: ['15', '30', '60', '120', '240']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run-maintenance-job
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      CRONJOB: ${{ inputs.cronjob }}
+      CONFIRM: ${{ inputs.confirm }}
+      TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+      JOB: ${{ inputs.cronjob }}-manual-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      # The scheduled times (01:30-09:00 UTC) are themselves a safety property:
+      # they are the low-traffic window. This workflow removes that, so make the
+      # operator restate which job they picked.
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "$CRONJOB" ]; then
+            echo "::error::confirm ('$CONFIRM') must exactly match the selected CronJob ('$CRONJOB')."
+            exit 1
+          fi
+
+      # What runs is the CronJob AS DEPLOYED, which is the last merge to smw --
+      # NOT the branch this workflow was dispatched from. Print it so the Actions
+      # log proves what actually ran.
+      # What runs is the CronJob AS DEPLOYED, which is the last merge to smw --
+      # NOT the branch this workflow was dispatched from. Print it so the Actions
+      # log proves what actually ran.
+      - name: Show the CronJob as deployed
+        run: |
+          set -euo pipefail
+          kubectl get cronjob "$CRONJOB" -n default -o jsonpath='{"schedule="}{.spec.schedule}{"\n"}{"image="}{.spec.jobTemplate.spec.template.spec.containers[*].image}{"\n"}{"backoffLimit="}{.spec.jobTemplate.spec.backoffLimit}{"\n"}{"activeDeadlineSeconds="}{.spec.jobTemplate.spec.activeDeadlineSeconds}{"\n"}{"restartPolicy="}{.spec.jobTemplate.spec.template.spec.restartPolicy}{"\n"}{"command="}{.spec.jobTemplate.spec.template.spec.containers[*].command}{"\n"}'
+          echo
+          echo "NOTE: this is the spec deployed to the cluster (the last merge to"
+          echo "smw), NOT the spec on the branch this workflow was dispatched from."
+
+      - name: Refuse if a Job is already active
+        run: |
+          set -euo pipefail
+          # Both the scheduled shape "<cronjob>-<epochMinutes>" and this
+          # workflow's "<cronjob>-manual-<runid>".
+          existing=$(kubectl get jobs -n default \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
+            | grep -E "^${CRONJOB}-([0-9]+|manual-[0-9]+-[0-9]+)$" || true)
+          for j in $existing; do
+            complete=$(kubectl get job "$j" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' || true)
+            failed=$(kubectl get job "$j" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' || true)
+            if [ "$complete" != "True" ] && [ "$failed" != "True" ]; then
+              echo "::error::Job '$j' for ${CRONJOB} is still active. Refusing to start a second one."
+              echo "Wait for it, or stop it with the 'Abort maintenance job' workflow."
+              exit 1
+            fi
+          done
+          echo "No active Job for ${CRONJOB}."
+
+      - name: Create the Job
+        run: |
+          set -euo pipefail
+          kubectl create job "$JOB" --from="cronjob/${CRONJOB}" -n default
+          echo "Created Job '$JOB' from cronjob/${CRONJOB}."
+          kubectl get job "$JOB" -n default -o wide
+
+      - name: Stream logs
+        run: |
+          set -uo pipefail
+          # Wait for a pod to exist before asking for logs.
+          for _ in $(seq 1 60); do
+            pod=$(kubectl get pods -n default -l "job-name=$JOB" -o name 2>/dev/null | head -1)
+            [ -n "$pod" ] && break
+            sleep 2
+          done
+          echo "::group::${JOB} output"
+          # Never fail the step on a log-stream hiccup; the wait step below is
+          # the authority on the outcome.
+          kubectl logs -f "job/$JOB" -n default --all-containers=true --pod-running-timeout=30m || true
+          echo "::endgroup::"
+
+      - name: Wait for outcome
+        id: wait
+        run: |
+          set -uo pipefail
+          deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+          result=timeout
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            complete=$(kubectl get job "$JOB" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+            failed=$(kubectl get job "$JOB" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
+            [ "$complete" = "True" ] && { result=complete; break; }
+            [ "$failed" = "True" ] && { result=failed; break; }
+            sleep 10
+          done
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          echo "Result: $result"
+
+          if [ "$result" != "complete" ]; then
+            echo "::group::describe job (events at the bottom)"
+            kubectl describe job "$JOB" -n default || true
+            echo "::endgroup::"
+          fi
+
+      # Capture per-pod state BEFORE anything is deleted. `kubectl logs -f job/X`
+      # follows one container, so a retry's attempts produce no streamed output
+      # at all -- without this, a failed run leaves nothing to diagnose from, and
+      # the operator has no kubectl.
+      - name: Diagnostics on a non-clean outcome
+        if: always() && steps.wait.outputs.result != 'complete'
+        run: |
+          set -uo pipefail
+          kubectl describe job "$JOB" -n default || true
+          kubectl get pods -n default -l "job-name=$JOB" -o wide || true
+          for pod in $(kubectl get pods -n default -l "job-name=$JOB" -o name 2>/dev/null); do
+            echo "::group::$pod"
+            kubectl describe "$pod" -n default || true
+            kubectl logs "$pod" -n default --all-containers --tail=200 || true
+            kubectl logs "$pod" -n default --all-containers --tail=200 --previous 2>/dev/null || true
+            echo "::endgroup::"
+          done
+
+      # Delete ONLY when the Job is proven finished. `result` is empty when the
+      # run was cancelled, hit GitHub's 6h ceiling, or the wait step errored --
+      # in all of those the Job is still running, and deleting it would kill live
+      # maintenance work, which is the exact opposite of this workflow's promise.
+      - name: Clean up
+        if: always()
+        env:
+          WAIT_RESULT: ${{ steps.wait.outputs.result }}
+        run: |
+          set -uo pipefail
+          case "$WAIT_RESULT" in
+            complete)
+              kubectl delete job "$JOB" -n default --ignore-not-found --cascade=foreground || true
+              ;;
+            *)
+              echo "::warning::'$JOB' is in state '${WAIT_RESULT:-unknown}' and has been LEFT IN PLACE."
+              echo "If it is still running, stop it with the 'Abort maintenance job' workflow."
+              ;;
+          esac
+
+      # Anything other than a clean completion fails the run. A timeout in
+      # particular must not render as a green check: it means "still running,
+      # outcome unknown", which an operator scanning run history would otherwise
+      # read as done.
+      - name: Fail the run unless the Job completed
+        if: steps.wait.outputs.result != 'complete'
+        env:
+          WAIT_RESULT: ${{ steps.wait.outputs.result }}
+        run: |
+          echo "::error::${CRONJOB} did not complete cleanly (state: ${WAIT_RESULT:-unknown}). See the output above."
+          exit 1
