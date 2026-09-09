@@ -24,6 +24,10 @@ on:
           - cronjob-mw-tridaily
           - cronjob-mw-monthly
           - cronjob-mariadb-backup
+          - cronjob-sitemap
+
+permissions:
+  contents: read
 
 jobs:
   abort:
@@ -50,12 +54,12 @@ jobs:
 
           # CronJob-spawned Jobs are named "<cronjob>-<scheduleEpochMinutes>";
           # the "Run maintenance job now" workflow names its one-off Jobs
-          # "<cronjob>-manual-<runid>". Match both exact shapes so a manually
+          # "<cronjob>-manual-<runid>-<attempt>". Match both exact shapes so a manually
           # started run can be stopped here too, and so we never touch an
           # unrelated workload.
           jobs=$(kubectl get jobs -n default \
             -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' \
-            | grep -E "^${CRONJOB}-([0-9]+|manual-[0-9]+)$" || true)
+            | grep -E "^${CRONJOB}-([0-9]+|manual-[0-9]+-[0-9]+)$" || true)
 
           if [ -z "$jobs" ]; then
             echo "No Job found for CronJob '${CRONJOB}'. Nothing to abort."
