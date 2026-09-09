@@ -19,10 +19,16 @@ on:
       script:
         description: Which CirrusSearch maintenance script to run
         required: true
-        default: Version
+        default: CheckIndexes
         type: choice
         options:
-          - Version
+          # Read-only. CheckIndexes is the cheapest connectivity probe: it
+          # connects and reports on every index, so it answers "can the PHP
+          # client talk to this cluster at all" without writing anything.
+          - CheckIndexes
+          - Metastore
+          # Write. UpdateSearchIndexConfig --startOver DELETES AND RECREATES
+          # indices; ForceSearchIndex and UpdateSuggesterIndex rebuild content.
           - UpdateSearchIndexConfig
           - ForceSearchIndex
           - UpdateSuggesterIndex
