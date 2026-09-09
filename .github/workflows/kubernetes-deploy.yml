@@ -84,6 +84,23 @@ jobs:
           secret-name: sitemap-keys
           data: ${{ secrets.SITEMAP_KEYS }}
 
+      # -s sh, not bash: these run under the MediaWiki image's dash.
+      - name: Lint shell scripts
+        run: |
+          set -euo pipefail
+          sh -n scripts/*.sh
+          shellcheck -s sh scripts/*.sh
+
+      # Generated, not committed as a manifest, so the script stays a real .sh
+      # file that the step above can lint. Must precede k8s-deploy.
+      - name: Sitemap script ConfigMap
+        run: |
+          set -euo pipefail
+          kubectl create configmap sitemap-config \
+            --from-file=generate-sitemap.sh=scripts/generate-sitemap.sh \
+            --namespace=default \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: CLOUDFLARE_API Secret
         uses: Azure/k8s-create-secret@v6
         with:
