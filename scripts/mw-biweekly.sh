@@ -19,6 +19,8 @@ run initSiteStats initSiteStats --update --active
 run_soft rebuildData SemanticMediaWiki:rebuildData --revision-mode --auto-recovery \
   --skip-dispose --ignore-exceptions --exception-log /tmp/smw-rebuild --report-runtime
 
+dump_exception_log /tmp/smw-rebuild
+
 run setupStore SemanticMediaWiki:setupStore --skip-import
 
 finish
