@@ -140,17 +140,38 @@ jobs:
       - name: Stream logs
         run: |
           set -uo pipefail
-          # Wait for a pod to exist before asking for logs.
-          for _ in $(seq 1 60); do
+          # Wait for the CONTAINER to start, not just the pod object to exist.
+          # `kubectl logs` on a pod in ContainerCreating fails immediately with
+          # BadRequest -- --pod-running-timeout governs pod SELECTION, not the
+          # wait for a container to come up, so it does not help here. 30m
+          # because this repo documents cold registry pulls taking ~25 min.
+          pod=""
+          phase=""
+          for _ in $(seq 1 360); do
             pod=$(kubectl get pods -n default -l "job-name=$JOB" -o name 2>/dev/null | head -1)
-            [ -n "$pod" ] && break
-            sleep 2
+            if [ -n "$pod" ]; then
+              phase=$(kubectl get "$pod" -n default -o jsonpath='{.status.phase}' 2>/dev/null || true)
+              case "$phase" in Running|Succeeded|Failed) break ;; esac
+            fi
+            sleep 5
           done
-          echo "::group::${JOB} output"
-          # Never fail the step on a log-stream hiccup; the wait step below is
-          # the authority on the outcome.
-          kubectl logs -f "job/$JOB" -n default --all-containers=true --pod-running-timeout=30m || true
-          echo "::endgroup::"
+
+          if [ -z "$pod" ]; then
+            echo "::warning::No pod appeared for $JOB within 30m. See the diagnostics step."
+          else
+            echo "streaming from $pod (phase: ${phase:-unknown})"
+            echo "::group::${JOB} output"
+            # A short-lived job can finish before the follow attaches; fall back
+            # to a plain read so the output is never silently lost. Producing no
+            # output at all is itself worth a warning -- it is how a green run
+            # with nothing in it happened before.
+            kubectl logs -f "job/$JOB" -n default --all-containers=true 2>&1 | tee /tmp/joblog.txt || true
+            if [ ! -s /tmp/joblog.txt ]; then
+              kubectl logs "job/$JOB" -n default --all-containers=true --tail=-1 2>&1 | tee /tmp/joblog.txt || true
+            fi
+            echo "::endgroup::"
+            [ -s /tmp/joblog.txt ] || echo "::warning::The job produced no readable output."
+          fi
 
       - name: Wait for outcome
         id: wait
