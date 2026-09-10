@@ -50,6 +50,7 @@ jobs:
         timeout-minutes: 2
         run: |
           echo "=== coredns deployment ==="; kubectl -n kube-system get deploy,svc -l k8s-app=kube-dns -o wide
+          echo "=== coredns-autoscaler configmap ==="; kubectl -n kube-system get configmap coredns-autoscaler -o yaml | grep -v -E "^\s+(resourceVersion|uid|creationTimestamp):"
           echo "=== coredns endpoints ==="; kubectl -n kube-system get endpoints kube-dns -o wide
           echo "=== coredns pods ==="; kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
           echo "=== coredns describe (events/conditions) ==="
