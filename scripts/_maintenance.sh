@@ -46,10 +46,25 @@ run_soft() {
   fi
 }
 
+# SMW does NOT create its --exception-log directory, and File::write() throws
+# FileNotWritableException when it is missing. That throw escapes
+# --ignore-exceptions and kills the whole rebuild at the first entity that
+# throws, so the directory has to exist before any step that passes the flag.
+prepare_exception_log() {
+  mkdir -p "$1"
+}
+
 # --exception-log writes into the pod's ephemeral /tmp, which is unreadable
 # without kubectl, so cat it into the job output.
 dump_exception_log() {
   dir=$1
+  # A missing directory is not a clean run -- it is the failure above, where
+  # exceptions could not be recorded at all. Reporting it as "no exceptions"
+  # states the opposite of what happened.
+  if [ ! -d "$dir" ]; then
+    echo "::: exception-log directory $dir is missing -- exceptions could NOT be recorded"
+    return
+  fi
   found=0
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
