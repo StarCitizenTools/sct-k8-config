@@ -33,9 +33,12 @@ on:
           - ForceSearchIndex
           - UpdateSuggesterIndex
       cluster:
+        # A key of $wgCirrusSearchClusters, not a hostname. Only "default"
+        # exists since Elasticsearch was retired; "opensearch" was the second
+        # key that made it possible to index one backend while the other served.
         description: Target cluster name from $wgCirrusSearchClusters
         required: true
-        default: opensearch
+        default: default
         type: string
       extra_args:
         description: "Additional args, e.g. --startOver or --skipLinks --indexOnSkip"
