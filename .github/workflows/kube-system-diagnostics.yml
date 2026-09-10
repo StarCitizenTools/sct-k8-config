@@ -34,16 +34,23 @@ jobs:
           echo "=== not-running / restarting ==="
           kubectl get pods -A --no-headers | awk '$4!="Running" || $5>0'
           echo "=== top pods ==="; kubectl top pods -A --sort-by=memory 2>&1 | head -30 || true
+      - name: Volume attachments
+        run: |
+          echo "=== volumeattachments ==="; kubectl get volumeattachments -o wide
+          echo "=== pvc ==="; kubectl get pvc -A
       - name: CoreDNS
+        timeout-minutes: 2
         run: |
           echo "=== coredns deployment ==="; kubectl -n kube-system get deploy,svc -l k8s-app=kube-dns -o wide
           echo "=== coredns endpoints ==="; kubectl -n kube-system get endpoints kube-dns -o wide
           echo "=== coredns pods ==="; kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
           echo "=== coredns describe (events/conditions) ==="
-          kubectl -n kube-system describe pods -l k8s-app=kube-dns | grep -E -A12 "^(Events|Conditions|State|Last State):" | head -80
+          kubectl -n kube-system describe pods -l k8s-app=kube-dns --request-timeout=20s | grep -E -A12 "^(Events|Conditions|State|Last State):" | head -80
           echo "=== coredns logs (last 40 lines each) ==="
-          for p in $(kubectl -n kube-system get pods -l k8s-app=kube-dns -o name); do echo "--- $p"; kubectl -n kube-system logs "$p" --tail=40 --all-containers 2>&1 | tail -40; done
+          # Skip pods that are Terminating: logs from an unreachable node hang.
+          for p in $(kubectl -n kube-system get pods -l k8s-app=kube-dns -o jsonpath='{range .items[?(!@.metadata.deletionTimestamp)]}{.metadata.name}{"\n"}{end}'); do echo "--- $p"; kubectl -n kube-system logs "$p" --tail=40 --all-containers --request-timeout=20s 2>&1 | tail -40; done
       - name: Recent events
+        timeout-minutes: 2
         run: |
           echo "=== last 80 events (all namespaces) ==="
           kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -80
