@@ -4,7 +4,9 @@ name: Run MediaWiki maintenance
 # `script` is an allowlist rather than free text. NEVER add sql.php, eval.php or
 # shell.php: arbitrary SQL/PHP would make this remote code execution with those
 # secrets. Bulk-deletion scripts want a purpose-built workflow instead, the way
-# delete-elasticsearch.yml is.
+# delete-elasticsearch.yml is. getConfiguration.php looks read-only but prints
+# config values, including keys GitHub does not mask, into a log anyone with
+# repo read access can see.
 #
 # There is no `sh -c` anywhere -- argv reaches execve directly, so a shell
 # metacharacter in an argument stays a literal argument. Keep it that way.
@@ -20,8 +22,12 @@ on:
           # Read-only.
           - showSiteStats.php
           - showJobs.php
+          - checkBadRedirects.php
+          - findMissingFiles.php
+          - checkComposerLockUpToDate.php
           # Dry-run unless `apply` is ticked.
           - namespaceDupes.php
+          - cleanupWatchlist.php
           - cleanupTitles.php
           - cleanupImages.php
           - fixDoubleRedirects.php
@@ -102,7 +108,9 @@ jobs:
             cleanupTitles.php|cleanupImages.php|fixDoubleRedirects.php)
               [ "$APPLY" = "true" ] || ARGS+=(--dry-run)
               ;;
-            namespaceDupes.php)
+            namespaceDupes.php|cleanupWatchlist.php)
+              # cleanupWatchlist extends TableCleanup, so it inherits --dry-run,
+              # but --fix is what actually governs whether it writes.
               [ "$APPLY" = "true" ] && ARGS+=(--fix) || true
               ;;
             cleanupUploadStash.php|refreshLinks.php)
