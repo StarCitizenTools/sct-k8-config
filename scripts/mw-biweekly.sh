@@ -16,6 +16,7 @@ run initSiteStats initSiteStats --update --active
 #  --skip-dispose   the daily job already runs disposeOutdatedEntities.
 #  --ignore-exceptions  a bad Lua/parser page is logged and skipped, not fatal --
 #    but SMW still exits non-zero when it logged any, so this is run_soft.
+prepare_exception_log /tmp/smw-rebuild
 run_soft rebuildData SemanticMediaWiki:rebuildData --revision-mode --auto-recovery \
   --skip-dispose --ignore-exceptions --exception-log /tmp/smw-rebuild --report-runtime
 
