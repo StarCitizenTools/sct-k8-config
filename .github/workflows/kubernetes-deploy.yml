@@ -449,6 +449,18 @@ jobs:
         with:
           version: '1.34'
 
+      # LKE re-applies its own coredns-autoscaler ConfigMap on version bumps,
+      # which would silently drop CoreDNS back to one replica; make it visible.
+      - name: Check CoreDNS has two replicas
+        if: success()
+        run: |
+          ready=$(kubectl -n kube-system get deploy coredns -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+          if [ "${ready:-0}" -lt 2 ]; then
+            echo "::warning::CoreDNS has ${ready:-0} ready replica(s), expected 2. LKE may have reset shared/coredns-autoscaler.yaml; this deploy re-applied it, re-check in a minute."
+          else
+            echo "CoreDNS ready replicas: $ready"
+          fi
+
       - name: Kubernetes Set Context
         uses: Azure/k8s-set-context@v5
         with:
