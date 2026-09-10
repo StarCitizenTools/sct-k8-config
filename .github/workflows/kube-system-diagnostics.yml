@@ -42,6 +42,21 @@ jobs:
             kubectl describe pod "$p" -n default --request-timeout=20s 2>&1 | grep -E -A3 "^(Status|Reason|Message|Node):|State:|Reason:|Warning|Error|not found|Events:" | head -40
           done
           echo "=== secrets/configmaps in default ==="; kubectl get secrets,configmaps -n default --no-headers | awk '{print $1}'
+      - name: Pods with many restarts (any namespace)
+        timeout-minutes: 2
+        run: |
+          kubectl get pods -A -o json | python3 -c '
+          import json,sys
+          for p in json.load(sys.stdin)["items"]:
+              for c in p["status"].get("containerStatuses",[]):
+                  if c.get("restartCount",0) >= 100:
+                      last=c.get("lastState",{}).get("terminated",{})
+                      res=[x for x in p["spec"]["containers"] if x["name"]==c["name"]][0].get("resources",{})
+                      print(p["metadata"]["namespace"], p["metadata"]["name"], c["name"],
+                            "restarts=%s" % c["restartCount"],
+                            "lastReason=%s exit=%s at=%s" % (last.get("reason"), last.get("exitCode"), last.get("finishedAt")),
+                            "resources=%s" % json.dumps(res))
+          '
       - name: Volume attachments
         run: |
           echo "=== volumeattachments ==="; kubectl get volumeattachments -o wide
