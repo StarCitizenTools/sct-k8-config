@@ -60,6 +60,8 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "valkey/valkey"
         update-types: ["version-update:semver-major"]
+      # Pinned to the exact version CirrusSearch requires.
+      - dependency-name: "opensearchproject/opensearch"
     groups:
       container-images:
         patterns:
