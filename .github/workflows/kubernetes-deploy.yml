@@ -437,17 +437,6 @@ jobs:
             kubectl rollout status "$w" --timeout=180s
             echo "::endgroup::"
           done
-  debug:
-    runs-on: ubuntu-latest
-    needs: docker
-    if: failure()
-    steps:
-      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
-      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
-      - uses: azure/setup-kubectl@v5
-        id: install
-        with:
-          version: '1.34'
 
       # LKE re-applies its own coredns-autoscaler ConfigMap on version bumps,
       # which would silently drop CoreDNS back to one replica; make it visible.
@@ -468,6 +457,19 @@ jobs:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
       
+
+  debug:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: failure()
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        id: install
+        with:
+          version: '1.34'
+
       # A rollout can also fail because of the node a pod lands on, not the
       # workload itself -- a node that reports Ready while its container runtime
       # is wedged leaves new pods stuck in ContainerCreating/PodInitializing
