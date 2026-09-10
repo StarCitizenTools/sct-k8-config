@@ -63,6 +63,17 @@ updates:
       # Pinned to the exact version CirrusSearch requires.
       - dependency-name: "opensearchproject/opensearch"
     groups:
+      # Images on the mariadb/valkey/opensearch pod templates, sidecars and init
+      # containers included. A bump here restarts a singleton StatefulSet and
+      # re-rolls its node placement (2026-09-10 outage), so it gets its own PR
+      # to merge in a window, never on sight.
+      stateful-images:
+        patterns:
+          - "mariadb"
+          - "valkey/valkey"
+          - "opensearchproject/opensearch"
+          - "oliver006/redis_exporter"
+          - "busybox"
       container-images:
         patterns:
           - "*"
