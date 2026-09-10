@@ -1,0 +1,29 @@
+# LKE-managed; only change is the [2,2] rung (two nodes -> two CoreDNS replicas).
+# LKE re-applies its copy on version bumps; re-check after upgrades.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-autoscaler
+  namespace: kube-system
+data:
+  ladder: |-
+    {
+      "coresToReplicas":
+      [
+        [ 1,1 ],
+        [ 256,3 ],
+        [ 512,4 ],
+        [ 1024,5 ],
+        [ 2048,8 ]
+      ],
+      "nodesToReplicas":
+      [
+        [ 1,1 ],
+        [ 2,2 ],
+        [ 3,2 ],
+        [ 8,3 ],
+        [ 16,4 ],
+        [ 32,5 ],
+        [ 64,8 ]
+      ]
+    }
