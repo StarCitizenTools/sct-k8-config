@@ -41,7 +41,7 @@ spec:
         # at all (verified -- not on PATH, not in /sbin or /usr/sbin), so using
         # it here crash-loops the pod with "sysctl: command not found".
         - name: sysctl
-          image: busybox:1.36
+          image: busybox:1.38
           securityContext:
             privileged: true
             runAsUser: 0
