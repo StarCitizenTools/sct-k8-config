@@ -1,0 +1,62 @@
+name: Reset Prometheus agent WAL
+
+# Discards the Prometheus agent's data volume (undelivered remote-write
+# samples) so it can start again after an unbounded WAL made replay OOM.
+# Deletes the PVC and the pod; the StatefulSet recreates both. Nothing else
+# in the cluster is touched. Gated: type RESET to confirm.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type RESET to discard the agent's WAL volume
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reset-prometheus-agent-wal
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    env:
+      NS: monitoring
+      POD: prom-agent-prometheus-agent-0
+      PVC: prom-agent-prometheus-agent-db-prom-agent-prometheus-agent-0
+    steps:
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+      - uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+      - name: Confirm and show state
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = "RESET" ] || { echo "::error::type RESET to confirm"; exit 1; }
+          kubectl -n "$NS" get pod "$POD" -o wide
+          kubectl -n "$NS" get pvc "$PVC"
+      - name: Delete the PVC and the pod
+        run: |
+          set -euo pipefail
+          kubectl -n "$NS" delete pvc "$PVC" --wait=false
+          kubectl -n "$NS" delete pod "$POD" --wait=false
+          for i in $(seq 1 24); do
+            sleep 10
+            if ! kubectl -n "$NS" get pvc "$PVC" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null | grep -q .; then
+              echo "old PVC gone (or replaced) after $((i*10))s"; break
+            fi
+          done
+      - name: Result
+        run: |
+          sleep 30
+          kubectl -n "$NS" get pvc "$PVC"
+          kubectl -n "$NS" get pod "$POD" -o wide
+          kubectl -n "$NS" get events --field-selector "involvedObject.name=$POD" --sort-by=.lastTimestamp | tail -12
