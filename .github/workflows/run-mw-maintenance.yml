@@ -1,38 +1,13 @@
 name: Run MediaWiki maintenance
 
-# Runs a CORE MediaWiki maintenance script against production, by exec'ing into
-# a live php-mediawiki pod -- the same approach as run-search-maintenance.yml and
-# run-update.yml. That pod already has the image, the mounted config and every
-# secret wired in via envFrom, so no Job spec is needed.
+# The pod this execs into holds the DB credentials and every envFrom secret, so
+# `script` is an allowlist rather than free text. NEVER add sql.php, eval.php or
+# shell.php: arbitrary SQL/PHP would make this remote code execution with those
+# secrets. Bulk-deletion scripts want a purpose-built workflow instead, the way
+# delete-elasticsearch.yml is.
 #
-# Sibling of, not part of, "Run maintenance job now": that one clones an existing
-# CronJob (`kubectl create job --from=cronjob/...`) and can only run what the repo
-# already schedules. This runs an arbitrary allowlisted script. Two different
-# mechanisms, so two different gates rather than one workflow with a mode switch.
-#
-# ---------------------------------------------------------------------------
-# SECURITY MODEL -- read before adding to the `script` list.
-#
-# The pod this execs into holds the DB credentials and every secret mounted by
-# envFrom, so anything runnable here has full read/write access to the wiki's
-# data. The control is that `script` is a `type: choice` ALLOWLIST, not free
-# text: which scripts can run is a code-review decision, not a runtime one.
-#
-# Deliberately NOT on the list, and they must not be added:
-#   sql.php, eval.php, shell.php  -- arbitrary SQL / arbitrary PHP, i.e. this
-#     workflow would become remote code execution with the cluster's secrets.
-#   deleteBatch.php, deleteOldRevisions.php, deleteArchivedRevisions.php
-#     -- irreversible bulk content deletion with no dry-run worth the name.
-# For those, write a purpose-built gated workflow that does the one specific
-# thing, the way delete-elasticsearch.yml does.
-#
-# Injection is handled structurally rather than by validation alone: the command
-# is `kubectl exec -- php run.php <script> <args...>`, passing argv straight to
-# execve with NO `sh -c` anywhere, so a shell metacharacter in an argument is
-# just a literal argument. bash does not re-evaluate $(...) out of a variable's
-# value during expansion either. `set -f` below closes the one remaining gap,
-# glob expansion of the unquoted word-split.
-# ---------------------------------------------------------------------------
+# There is no `sh -c` anywhere -- argv reaches execve directly, so a shell
+# metacharacter in an argument stays a literal argument. Keep it that way.
 on:
   workflow_dispatch:
     inputs:
@@ -45,10 +20,10 @@ on:
           # Read-only.
           - showSiteStats.php
           - showJobs.php
-          # Report by default; write only when `apply` is ticked.
+          # Write only when `apply` is ticked.
           - namespaceDupes.php
           - cleanupTitles.php
-          # Repair. Rebuilds link tables; heavy but not destructive.
+          # Repair; heavy but not destructive.
           - refreshLinks.php
       apply:
         description: "WRITE MODE: actually change data (unticked = dry-run/report only)"
@@ -101,9 +76,7 @@ jobs:
             echo "::error::confirm ('$CONFIRM') must exactly match the selected script ('$SCRIPT')."
             exit 1
           fi
-          # Reject anything outside a conservative argument charset. This is
-          # defence in depth, not the primary control -- argv already cannot
-          # reach a shell -- but it keeps a typo from silently becoming a flag.
+          # Defence in depth; argv already cannot reach a shell.
           case "${EXTRA_ARGS:-}" in
             '') ;;
             *[!A-Za-z0-9=_,./:\ -]*)
@@ -114,22 +87,20 @@ jobs:
       - name: Run
         run: |
           set -euo pipefail
+          # argv is built and run in ONE step: handing an array between steps
+          # means serialising it, and an empty array round-trips through
+          # `printf '%s\n'` as a single empty-string argument.
           ARGS=()
-          # The dry-run flag differs per script, so map it here rather than
-          # making the operator remember which spelling each one wants. Both
-          # default to not writing.
+          # cleanupTitles writes unless given --dry-run; namespaceDupes reports
+          # unless given --fix. Opposite defaults, so map them here.
           case "$SCRIPT" in
             cleanupTitles.php)
-              # Writes unless told otherwise, so the flag is added for safety.
               [ "$APPLY" = "true" ] || ARGS+=(--dry-run)
               ;;
             namespaceDupes.php)
-              # Reports by default; --fix is what makes it write.
               [ "$APPLY" = "true" ] && ARGS+=(--fix) || true
               ;;
             *)
-              # A read-only script with apply ticked is a misunderstanding about
-              # what is about to happen -- fail rather than silently ignore it.
               if [ "$APPLY" = "true" ]; then
                 echo "::error::'$SCRIPT' has no write mode wired up. Re-run with apply unticked."
                 exit 1
@@ -137,16 +108,13 @@ jobs:
               ;;
           esac
 
-          # Word-split extra_args into separate argv elements, with globbing off
-          # so a value like --foo=* cannot expand against the runner's filesystem.
+          # Globbing off: the unquoted split would otherwise expand a value
+          # like --foo=* against the runner's filesystem.
           set -f
           # shellcheck disable=SC2206
           [ -z "${EXTRA_ARGS:-}" ] || ARGS+=($EXTRA_ARGS)
           set +f
 
-          # Built and used in ONE step on purpose: handing the array between
-          # steps means serialising it, and an empty array round-trips through
-          # `printf '%s\n'` as a single empty-string argument.
           echo "script : $SCRIPT"
           echo "apply  : $APPLY"
           echo "argv   : run.php $SCRIPT ${ARGS[*]+"${ARGS[*]}"}"
@@ -164,8 +132,7 @@ jobs:
           fi
           echo "pod: $pod"
           echo
-          # NOTE: this shares the serving pod's CPU with live web traffic and is
-          # not capped separately. Fine for the scripts above; anything that runs
-          # for hours belongs in a CronJob with its own limits instead.
+          # Shares the serving pod's CPU with live traffic, uncapped. Anything
+          # running for hours belongs in a CronJob with its own limits.
           kubectl exec "$pod" -c php-mediawiki -- \
             php /var/www/mediawiki/maintenance/run.php "$SCRIPT" "${ARGS[@]+"${ARGS[@]}"}"
