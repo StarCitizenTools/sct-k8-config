@@ -1,0 +1,157 @@
+name: Run MediaWiki maintenance
+
+# The pod this execs into holds the DB credentials and every envFrom secret, so
+# `script` is an allowlist rather than free text. NEVER add sql.php, eval.php or
+# shell.php: arbitrary SQL/PHP would make this remote code execution with those
+# secrets. Bulk-deletion scripts want a purpose-built workflow instead, the way
+# delete-elasticsearch.yml is. getConfiguration.php looks read-only but prints
+# config values, including keys GitHub does not mask, into a log anyone with
+# repo read access can see.
+#
+# There is no `sh -c` anywhere -- argv reaches execve directly, so a shell
+# metacharacter in an argument stays a literal argument. Keep it that way.
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Which core maintenance script to run
+        required: true
+        default: showSiteStats.php
+        type: choice
+        options:
+          # Read-only.
+          - showSiteStats.php
+          - showJobs.php
+          - checkBadRedirects.php
+          - findMissingFiles.php
+          - checkComposerLockUpToDate.php
+          # Dry-run unless `apply` is ticked.
+          - namespaceDupes.php
+          - cleanupWatchlist.php
+          - cleanupTitles.php
+          - cleanupImages.php
+          - fixDoubleRedirects.php
+          # No dry-run upstream: these require `apply`.
+          - cleanupUploadStash.php
+          - refreshLinks.php
+      apply:
+        description: "WRITE MODE: allow this run to change data"
+        required: false
+        default: false
+        type: boolean
+      extra_args:
+        description: "Additional args, e.g. --namespace=1199 or --start=1 --end=1000"
+        required: false
+        default: ''
+        type: string
+      confirm:
+        description: Type the script name again to confirm (e.g. cleanupTitles.php)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run-mw-maintenance
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      SCRIPT: ${{ inputs.script }}
+      APPLY: ${{ inputs.apply }}
+      EXTRA_ARGS: ${{ inputs.extra_args }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "$SCRIPT" ]; then
+            echo "::error::confirm ('$CONFIRM') must exactly match the selected script ('$SCRIPT')."
+            exit 1
+          fi
+          # Defence in depth; argv already cannot reach a shell.
+          case "${EXTRA_ARGS:-}" in
+            '') ;;
+            *[!A-Za-z0-9=_,./:\ -]*)
+              echo "::error::extra_args may only contain [A-Za-z0-9=_,./:- ] and spaces."
+              exit 1 ;;
+          esac
+
+      - name: Run
+        run: |
+          set -euo pipefail
+          # argv is built and run in ONE step: handing an array between steps
+          # means serialising it, and an empty array round-trips through
+          # `printf '%s\n'` as a single empty-string argument.
+          ARGS=()
+          # Four groups because upstream is not consistent: some take --dry-run,
+          # namespaceDupes instead reports unless given --fix, and some have no
+          # dry-run at all -- those must not be presented as if leaving `apply`
+          # unticked made them safe.
+          case "$SCRIPT" in
+            cleanupTitles.php|cleanupImages.php|fixDoubleRedirects.php)
+              [ "$APPLY" = "true" ] || ARGS+=(--dry-run)
+              ;;
+            namespaceDupes.php|cleanupWatchlist.php)
+              # cleanupWatchlist extends TableCleanup, so it inherits --dry-run,
+              # but --fix is what actually governs whether it writes.
+              [ "$APPLY" = "true" ] && ARGS+=(--fix) || true
+              ;;
+            cleanupUploadStash.php|refreshLinks.php)
+              if [ "$APPLY" != "true" ]; then
+                echo "::error::$SCRIPT has no dry-run mode -- it always writes. Tick apply to run it."
+                exit 1
+              fi
+              ;;
+            *)
+              if [ "$APPLY" = "true" ]; then
+                echo "::error::'$SCRIPT' has no write mode wired up. Re-run with apply unticked."
+                exit 1
+              fi
+              ;;
+          esac
+
+          # Globbing off: the unquoted split would otherwise expand a value
+          # like --foo=* against the runner's filesystem.
+          set -f
+          # shellcheck disable=SC2206
+          [ -z "${EXTRA_ARGS:-}" ] || ARGS+=($EXTRA_ARGS)
+          set +f
+
+          echo "script : $SCRIPT"
+          echo "apply  : $APPLY"
+          echo "argv   : run.php $SCRIPT ${ARGS[*]+"${ARGS[*]}"}"
+          if [ "$APPLY" = "true" ]; then
+            echo "::warning::WRITE MODE -- this run will change data."
+          fi
+          echo
+
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "pod: $pod"
+          echo
+          # Shares the serving pod's CPU with live traffic, uncapped. Anything
+          # running for hours belongs in a CronJob with its own limits.
+          kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php "$SCRIPT" "${ARGS[@]+"${ARGS[@]}"}"
