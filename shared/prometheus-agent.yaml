@@ -1,0 +1,64 @@
+# The Prometheus agent that remote-writes cluster metrics to prometheus.starcitizen.tools.
+# Was applied by hand; owned here since 2026-09-10 so its args and resources are versioned.
+# retention.max-time caps how long samples wait in the WAL when remote write stalls:
+# an unbounded WAL (1.3GB, 12k segments) made every start OOM during replay.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: PrometheusAgent
+metadata:
+  name: prometheus-agent
+  namespace: monitoring
+spec:
+  externalLabels:
+    cluster: scw-k8s
+  version: v2.54.1
+  replicas: 1
+  scrapeInterval: 30s
+  serviceAccountName: prometheus-agent
+  securityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+  podMonitorNamespaceSelector: {}
+  podMonitorSelector: {}
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  scrapeConfigNamespaceSelector: {}
+  scrapeConfigSelector: {}
+  portName: web
+  remoteWrite:
+  - basicAuth:
+      password:
+        key: password
+        name: prometheus-remote-write-auth
+      username:
+        key: username
+        name: prometheus-remote-write-auth
+    name: nas-prometheus
+    queueConfig:
+      batchSendDeadline: 60s
+      capacity: 10000
+      maxBackoff: 5s
+      maxSamplesPerSend: 2000
+      maxShards: 5
+      minBackoff: 30ms
+      minShards: 1
+    url: https://prometheus.starcitizen.tools/api/v1/write
+  additionalArgs:
+  - name: storage.agent.retention.max-time
+    value: 2h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: linode-block-storage
