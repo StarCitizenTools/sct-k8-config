@@ -83,6 +83,13 @@ jobs:
           kubectl exec -n default "$pod" -c php-mediawiki --request-timeout=30s -- curl -sS -m 8 -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' -X POST "$url" 2>&1 || true
           echo "=== WAL size on the agent volume (best effort, container may be mid-replay) ==="
           kubectl exec -n monitoring prom-agent-prometheus-agent-0 -c prometheus --request-timeout=20s -- sh -c 'du -sh /prometheus /prometheus/wal 2>/dev/null; ls /prometheus/wal | wc -l; df -h /prometheus' 2>&1 || true
+          echo "=== prometheusagent full object (for bringing it into the repo) ==="
+          kubectl get prometheusagent -n monitoring prometheus-agent -o json 2>/dev/null | python3 -c '
+          import json,sys,yaml
+          a=json.load(sys.stdin); m=a["metadata"]
+          a["metadata"]={"name":m["name"],"namespace":m["namespace"],"labels":m.get("labels",{})}
+          a.pop("status",None); print(yaml.safe_dump(a, sort_keys=False))
+          '
           echo "=== prometheusagent spec (probes/resources/storage) ==="
           kubectl get prometheusagent -A -o json 2>/dev/null | python3 -c '
           import json,sys
