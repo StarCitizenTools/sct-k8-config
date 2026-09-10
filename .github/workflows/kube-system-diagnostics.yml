@@ -1,0 +1,49 @@
+name: Kube-system Diagnostics
+
+# Read-only cluster-wide view for incidents where the default namespace looks
+# healthy but everything fails: CoreDNS, node conditions, recent events, and
+# resource pressure. Only `get`, `describe`, `top` and `logs`.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+      - uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+      - name: Nodes
+        run: |
+          echo "=== nodes ==="; kubectl get nodes -o wide
+          echo "=== node conditions ==="
+          kubectl get nodes -o custom-columns='NODE:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,MEM:.status.conditions[?(@.type=="MemoryPressure")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status,PID:.status.conditions[?(@.type=="PIDPressure")].status'
+          echo "=== top nodes ==="; kubectl top nodes 2>&1 || true
+      - name: All pods
+        run: |
+          echo "=== pods (all namespaces) ==="
+          kubectl get pods -A -o wide
+          echo "=== not-running / restarting ==="
+          kubectl get pods -A --no-headers | awk '$4!="Running" || $5>0'
+          echo "=== top pods ==="; kubectl top pods -A --sort-by=memory 2>&1 | head -30 || true
+      - name: CoreDNS
+        run: |
+          echo "=== coredns deployment ==="; kubectl -n kube-system get deploy,svc -l k8s-app=kube-dns -o wide
+          echo "=== coredns endpoints ==="; kubectl -n kube-system get endpoints kube-dns -o wide
+          echo "=== coredns pods ==="; kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
+          echo "=== coredns describe (events/conditions) ==="
+          kubectl -n kube-system describe pods -l k8s-app=kube-dns | grep -E -A12 "^(Events|Conditions|State|Last State):" | head -80
+          echo "=== coredns logs (last 40 lines each) ==="
+          for p in $(kubectl -n kube-system get pods -l k8s-app=kube-dns -o name); do echo "--- $p"; kubectl -n kube-system logs "$p" --tail=40 --all-containers 2>&1 | tail -40; done
+      - name: Recent events
+        run: |
+          echo "=== last 80 events (all namespaces) ==="
+          kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -80
