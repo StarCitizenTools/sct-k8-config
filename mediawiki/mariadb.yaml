@@ -60,6 +60,14 @@ spec:
       labels:
         app: mariadb
     spec:
+      # Never share a node with valkey (the pair overcommits a node).
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: valkey
+              topologyKey: kubernetes.io/hostname
       securityContext:
         fsGroup: 999
       containers:

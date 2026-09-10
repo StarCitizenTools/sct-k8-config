@@ -42,6 +42,14 @@ spec:
             labels:
                 app: valkey
         spec:
+            # Never share a node with mariadb.
+            affinity:
+                podAntiAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        - labelSelector:
+                              matchLabels:
+                                  app: mariadb
+                          topologyKey: kubernetes.io/hostname
             containers:
                 - name: valkey
                   image: valkey/valkey:9.1.2-alpine
