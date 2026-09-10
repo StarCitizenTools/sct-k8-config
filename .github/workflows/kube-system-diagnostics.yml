@@ -34,6 +34,14 @@ jobs:
           echo "=== not-running / restarting ==="
           kubectl get pods -A --no-headers | awk '$4!="Running" || $5>0'
           echo "=== top pods ==="; kubectl top pods -A --sort-by=memory 2>&1 | head -30 || true
+      - name: Describe non-Running default pods
+        timeout-minutes: 2
+        run: |
+          for p in $(kubectl get pods -n default -o jsonpath='{range .items[?(@.status.phase!="Running")]}{.metadata.name}{"\n"}{end}' | grep -v -E "^cronjob-"); do
+            echo "=== describe $p ==="
+            kubectl describe pod "$p" -n default --request-timeout=20s 2>&1 | grep -E -A3 "^(Status|Reason|Message|Node):|State:|Reason:|Warning|Error|not found|Events:" | head -40
+          done
+          echo "=== secrets/configmaps in default ==="; kubectl get secrets,configmaps -n default --no-headers | awk '{print $1}'
       - name: Volume attachments
         run: |
           echo "=== volumeattachments ==="; kubectl get volumeattachments -o wide
