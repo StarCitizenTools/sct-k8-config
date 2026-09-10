@@ -68,6 +68,21 @@ jobs:
             echo "--- last 40 log lines (previous crash) ---"
             kubectl logs "$pod" -n "$ns" --all-containers --previous --tail=40 --request-timeout=20s 2>&1 | tail -40
           done
+          echo "=== prometheusagent ownership (labels/annotations) + remoteWrite URL ==="
+          kubectl get prometheusagent -A -o json 2>/dev/null | python3 -c '
+          import json,sys
+          for a in json.load(sys.stdin).get("items",[]):
+              m=a["metadata"]; print(m["namespace"], m["name"], "labels=", json.dumps(m.get("labels",{})), "annotations=", json.dumps({k:v[:80] for k,v in m.get("annotations",{}).items()}))
+              for rw in a["spec"].get("remoteWrite",[]): print("  remoteWrite", rw.get("name"), rw.get("url"), "queueConfig=", json.dumps(rw.get("queueConfig",{})))
+              print("  additionalArgs=", json.dumps(a["spec"].get("additionalArgs",[])))
+          '
+          echo "=== remote write reachability from inside the cluster (via a php pod) ==="
+          url=$(kubectl get prometheusagent -A -o jsonpath='{.items[0].spec.remoteWrite[0].url}' 2>/dev/null)
+          pod=$(kubectl get pods -n default -l app=php-mediawiki --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          echo "url=$url via $pod"
+          kubectl exec -n default "$pod" -c php-mediawiki --request-timeout=30s -- curl -sS -m 8 -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' -X POST "$url" 2>&1 || true
+          echo "=== WAL size on the agent volume (best effort, container may be mid-replay) ==="
+          kubectl exec -n monitoring prom-agent-prometheus-agent-0 -c prometheus --request-timeout=20s -- sh -c 'du -sh /prometheus /prometheus/wal 2>/dev/null; ls /prometheus/wal | wc -l; df -h /prometheus' 2>&1 || true
           echo "=== prometheusagent spec (probes/resources/storage) ==="
           kubectl get prometheusagent -A -o json 2>/dev/null | python3 -c '
           import json,sys
