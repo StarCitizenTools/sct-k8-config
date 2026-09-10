@@ -10,41 +10,58 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # the most recently pushed -- same behaviour as the old Docker Hub query.
 GHCR_ORG="starcitizentools"
 
-# Preflight: gh present and scoped for package reads.
-if ! command -v gh >/dev/null 2>&1; then
-  echo "Error: gh (GitHub CLI) is required but not installed." >&2
-  exit 1
-fi
-if ! gh auth status 2>/dev/null | grep -q "read:packages"; then
-  echo "Error: gh token is missing the 'read:packages' scope." >&2
-  echo "       Run: gh auth refresh -h github.com -s read:packages" >&2
-  exit 1
-fi
+# Usage: update-images.sh [BUILD_STAMP]
+#
+# One sct-docker-images build publishes mediawiki, jobrunner and nginx under a
+# shared calver stamp (e.g. 26.09.09.653). Given the stamp, no registry lookup
+# is needed. Without it, query GHCR (bump-app-images.yml does its own lookup)
+# for the newest stamp.
+STAMP="${1:-}"
 
-# latest_tag <package> <regex> -> newest tag matching the regex (or empty).
-latest_tag() {
-  local package="$1" regex="$2"
-  gh api --paginate "/orgs/${GHCR_ORG}/packages/container/${package}/versions" \
-    --jq '.[].metadata.container.tags[]' \
-    | grep -E "$regex" \
-    | head -1
-}
+if [ -n "$STAMP" ]; then
+  if ! [[ "$STAMP" =~ ^[0-9]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]; then
+    echo "Error: '$STAMP' is not a build stamp like 26.09.09.653" >&2
+    exit 1
+  fi
+  MW_TAG="smw-${STAMP}"
+  NGINX_TAG="${STAMP}"
+else
+  # Preflight: gh present and scoped for package reads.
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "Error: gh (GitHub CLI) is required but not installed." >&2
+    exit 1
+  fi
+  if ! gh auth status 2>/dev/null | grep -q "read:packages"; then
+    echo "Error: gh token is missing the 'read:packages' scope." >&2
+    echo "       Run: gh auth refresh -h github.com -s read:packages" >&2
+    exit 1
+  fi
 
-echo "Fetching latest tags from GHCR..."
+  # latest_tag <package> <regex> -> newest tag matching the regex (or empty).
+  latest_tag() {
+    local package="$1" regex="$2"
+    gh api --paginate "/orgs/${GHCR_ORG}/packages/container/${package}/versions" \
+      --jq '.[].metadata.container.tags[]' \
+      | grep -E "$regex" \
+      | head -1
+  }
 
-# mediawiki: smw-<version>, excluding smw-latest and smw-jobrunner-* (both share
-# this package). Anchoring smw- to a digit drops both.
-MW_TAG=$(latest_tag mediawiki '^smw-[0-9]')
-if [ -z "$MW_TAG" ]; then
-  echo "Error: Failed to fetch mediawiki tag from GHCR" >&2
-  exit 1
-fi
+  echo "Fetching latest tags from GHCR..."
 
-# nginx: bare <version> tag (e.g. 26.06.03.562), excluding 'latest'.
-NGINX_TAG=$(latest_tag nginx '^[0-9]')
-if [ -z "$NGINX_TAG" ]; then
-  echo "Error: Failed to fetch nginx tag from GHCR" >&2
-  exit 1
+  # mediawiki: smw-<version>, excluding smw-latest and smw-jobrunner-* (both share
+  # this package). Anchoring smw- to a digit drops both.
+  MW_TAG=$(latest_tag mediawiki '^smw-[0-9]')
+  if [ -z "$MW_TAG" ]; then
+    echo "Error: Failed to fetch mediawiki tag from GHCR" >&2
+    exit 1
+  fi
+
+  # nginx: bare <version> tag (e.g. 26.06.03.562), excluding 'latest'.
+  NGINX_TAG=$(latest_tag nginx '^[0-9]')
+  if [ -z "$NGINX_TAG" ]; then
+    echo "Error: Failed to fetch nginx tag from GHCR" >&2
+    exit 1
+  fi
 fi
 
 # Derive jobrunner tag: extract version suffix from mediawiki tag (e.g., smw-26.04.06.498 → 26.04.06.498)
@@ -52,7 +69,7 @@ MW_VERSION="${MW_TAG#smw-}"
 JOBRUNNER_TAG="smw-jobrunner-${MW_VERSION}"
 
 echo ""
-echo "Latest tags:"
+echo "Tags:"
 echo "  mediawiki:  ${MW_TAG}"
 echo "  jobrunner:  ${JOBRUNNER_TAG}"
 echo "  nginx:      ${NGINX_TAG}"

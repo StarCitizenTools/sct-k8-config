@@ -1,0 +1,90 @@
+name: Bump app images
+
+# Opens a PR that moves every manifest to one sct-docker-images build stamp.
+# Merging the PR (push to smw) is what deploys. Run it after an image build;
+# with no stamp it uses the newest one in GHCR, which needs this repo granted
+# read access on the mediawiki and nginx packages (package settings -> Manage
+# Actions access). Give a stamp to roll back to an older build.
+on:
+  workflow_dispatch:
+    inputs:
+      stamp:
+        description: "Build stamp, e.g. 26.09.09.653 (empty = newest in GHCR)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+
+concurrency:
+  group: bump-app-images
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve build stamp
+        id: stamp
+        env:
+          STAMP: ${{ github.event.inputs.stamp }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$STAMP" ]; then
+            # Newest stamp that BOTH packages carry (a build pushes them together).
+            tags() {
+              local t
+              t=$(curl -fsS -u "x:${GHCR_TOKEN}" \
+                "https://ghcr.io/token?service=ghcr.io&scope=repository:starcitizentools/$1:pull" \
+                | jq -r .token)
+              curl -fsS -H "Authorization: Bearer $t" \
+                "https://ghcr.io/v2/starcitizentools/$1/tags/list?n=10000" | jq -r '.tags[]'
+            }
+            mw=$(tags mediawiki | grep -E '^smw-[0-9]' | sed 's/^smw-//' | sort -u)
+            ng=$(tags nginx | grep -E '^[0-9]' | sort -u)
+            STAMP=$(comm -12 <(echo "$mw") <(echo "$ng") | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1)
+            [ -n "$STAMP" ] || { echo "::error::No common build stamp found in GHCR (is this repo granted read access to the packages?)"; exit 1; }
+            echo "Newest stamp in GHCR: ${STAMP}"
+          fi
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite manifests
+        id: rewrite
+        env:
+          STAMP: ${{ steps.stamp.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          ./update-images.sh "$STAMP"
+          if git diff --quiet; then
+            echo "Manifests already at ${STAMP}; nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update the PR
+        if: steps.rewrite.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAMP: ${{ steps.stamp.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          branch="bump-app-images/${STAMP}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -am "Bump Docker images to ${STAMP}"
+          # Force: a re-run for the same stamp rewrites the same branch.
+          git push --force origin "$branch"
+          if gh pr list --head "$branch" --state open --json number --jq 'length' | grep -qx 0; then
+            gh pr create --base smw --head "$branch" \
+              --title "Bump Docker images to ${STAMP}" \
+              --body "Moves every manifest to build stamp \`${STAMP}\` (mediawiki, jobrunner and nginx together). Merging deploys."
+          else
+            echo "PR for ${branch} already open; branch updated."
+          fi

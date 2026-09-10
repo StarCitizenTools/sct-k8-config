@@ -44,11 +44,12 @@ updates:
     cooldown:
       default-days: 7
     ignore:
-      # Our own images. These are built by sct-docker-images and carry a shared
-      # build stamp (e.g. smw-26.07.30.606 / 26.07.30.606) that must move in
-      # lockstep across mediawiki, jobrunner and nginx. Dependabot would bump
-      # them individually and break that, so the app release process owns them.
-      - dependency-name: "ghcr.io/starcitizentools/*"
+      # Our own images. They share one build stamp that must move in lockstep
+      # across every manifest, which bump-app-images.yml handles; Dependabot
+      # skipped /shared when it bumped these (PR #41). The name has no registry
+      # prefix: Dependabot strips `ghcr.io/`, so `ghcr.io/starcitizentools/*`
+      # never matched.
+      - dependency-name: "starcitizentools/*"
 
       # Stateful singletons on a memory-constrained 2-node cluster: a major here
       # is a planned migration (data-dir format, schema, memory profile), not
