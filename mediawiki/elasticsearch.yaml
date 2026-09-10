@@ -6,7 +6,11 @@ spec:
   version: 7.10.2
   nodeSets:
   - name: elasticsearch
-    count: 1
+    # Scaled to zero for the OpenSearch migration, NOT deleted: the PVC and its
+    # data survive, so rollback is count: 1 plus reverting the CirrusSearch
+    # cluster config. Deleting the manifest instead would orphan the object --
+    # CI applies without prune -- and destroy that rollback path.
+    count: 0
     podTemplate:
       spec:
         initContainers:
