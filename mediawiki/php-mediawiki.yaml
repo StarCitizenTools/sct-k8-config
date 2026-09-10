@@ -71,7 +71,7 @@ spec:
         # page import from update.php. Not --quiet: the summary logs per-phase
         # timings.
         - name: smw-setup-store
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.10.661
+          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.10.662
           command:
             - /bin/sh
             - -c
@@ -85,7 +85,7 @@ spec:
                 name: prd-db-password
       containers:
         - name: php-mediawiki
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.10.661
+          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.10.662
           ports:
             - containerPort: 9000
           # Gate traffic on php-fpm actually listening. TCP-only on purpose: a
