@@ -57,6 +57,25 @@ jobs:
                             "lastReason=%s exit=%s at=%s" % (last.get("reason"), last.get("exitCode"), last.get("finishedAt")),
                             "resources=%s" % json.dumps(res))
           '
+      - name: Describe CrashLoopBackOff pods (any namespace)
+        timeout-minutes: 3
+        run: |
+          kubectl get pods -A --no-headers | awk '$4=="CrashLoopBackOff" {print $1, $2}' | while read -r ns pod; do
+            echo "=== describe $ns/$pod ==="
+            kubectl describe pod "$pod" -n "$ns" --request-timeout=20s 2>&1 | grep -E -A4 "^\s+(State|Last State|Ready|Restart Count|Limits|Requests|Startup|Liveness|Readiness):" | head -60
+            echo "--- last 60 log lines (current) ---"
+            kubectl logs "$pod" -n "$ns" --all-containers --tail=60 --request-timeout=20s 2>&1 | tail -60
+            echo "--- last 40 log lines (previous crash) ---"
+            kubectl logs "$pod" -n "$ns" --all-containers --previous --tail=40 --request-timeout=20s 2>&1 | tail -40
+          done
+          echo "=== prometheusagent spec (probes/resources/storage) ==="
+          kubectl get prometheusagent -A -o json 2>/dev/null | python3 -c '
+          import json,sys
+          for a in json.load(sys.stdin).get("items",[]):
+              sp=a["spec"]; print(a["metadata"]["namespace"], a["metadata"]["name"])
+              for k in ("maximumStartupDurationSeconds","resources","storage","remoteWrite","walCompression","version","image"):
+                  if k in sp: print(" ", k, "=", json.dumps(sp[k])[:400])
+          '
       - name: Volume attachments
         run: |
           echo "=== volumeattachments ==="; kubectl get volumeattachments -o wide
