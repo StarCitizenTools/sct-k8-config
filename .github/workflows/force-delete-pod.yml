@@ -1,0 +1,64 @@
+name: Force-delete pod on a NotReady node
+
+# For a StatefulSet pod stuck Terminating on a node that is NotReady: the
+# kubelet there cannot confirm the shutdown, so the pod never goes away and the
+# StatefulSet never recreates it elsewhere. A forced delete removes the API
+# object so the controller schedules a replacement on a healthy node. Refuses
+# to act unless the pod is already Terminating AND its node is NotReady, so it
+# cannot be used to kill a healthy pod. The volume follows after the
+# attach/detach controller's ~6 min force-detach window.
+on:
+  workflow_dispatch:
+    inputs:
+      pod:
+        description: Exact pod name (e.g. mariadb-sts-0)
+        required: true
+        type: string
+      confirm:
+        description: Type the pod name again to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: force-delete-pod
+  cancel-in-progress: false
+
+jobs:
+  force-delete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+      - uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+      - name: Check preconditions
+        env:
+          POD: ${{ github.event.inputs.pod }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$POD" = "$CONFIRM" ] || { echo "::error::confirm does not match pod"; exit 1; }
+          [[ "$POD" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo "::error::bad pod name"; exit 1; }
+          node=$(kubectl get pod "$POD" -n default -o jsonpath='{.spec.nodeName}')
+          deleting=$(kubectl get pod "$POD" -n default -o jsonpath='{.metadata.deletionTimestamp}')
+          ready=$(kubectl get node "$node" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+          echo "pod=$POD node=$node deletionTimestamp=${deleting:-none} nodeReady=$ready"
+          [ -n "$deleting" ] || { echo "::error::$POD is not Terminating; use delete-stuck-pod instead"; exit 1; }
+          [ "$ready" != "True" ] || { echo "::error::node $node is Ready; refusing to force-delete"; exit 1; }
+      - name: Force delete
+        env:
+          POD: ${{ github.event.inputs.pod }}
+        run: |
+          set -euo pipefail
+          kubectl delete pod "$POD" -n default --force --grace-period=0 --wait=false
+          sleep 20
+          echo "=== pod after ==="; kubectl get pod "$POD" -n default -o wide 2>&1 || true
+          echo "=== volume attachments ==="; kubectl get volumeattachments -o wide 2>&1 | head -20
+          echo "=== events for pod ==="; kubectl get events -n default --field-selector "involvedObject.name=$POD" --sort-by=.lastTimestamp 2>/dev/null | tail -15
