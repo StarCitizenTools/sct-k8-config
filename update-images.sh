@@ -14,7 +14,7 @@ GHCR_ORG="starcitizentools"
 #
 # One sct-docker-images build publishes mediawiki, jobrunner and nginx under a
 # shared calver stamp (e.g. 26.09.09.653). Given the stamp, no registry lookup
-# is needed; this is how bump-app-images.yml calls it. Without it, query GHCR
+# is needed. Without it, query GHCR (bump-app-images.yml does its own lookup)
 # for the newest stamp.
 STAMP="${1:-}"
 

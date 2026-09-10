@@ -1,22 +1,22 @@
 name: Bump app images
 
 # Opens a PR that moves every manifest to one sct-docker-images build stamp.
-# Merging the PR (push to smw) is what deploys. Triggered automatically by the
-# image build in sct-docker-images (repository_dispatch) or by hand with a
-# stamp, e.g. to roll back to an older build.
+# Merging the PR (push to smw) is what deploys. Run it after an image build;
+# with no stamp it uses the newest one in GHCR, which needs this repo granted
+# read access on the mediawiki and nginx packages (package settings -> Manage
+# Actions access). Give a stamp to roll back to an older build.
 on:
-  repository_dispatch:
-    types: [app-images-built]
   workflow_dispatch:
     inputs:
       stamp:
-        description: "Build stamp, e.g. 26.09.09.653"
-        required: true
+        description: "Build stamp, e.g. 26.09.09.653 (empty = newest in GHCR)"
+        required: false
         type: string
 
 permissions:
   contents: write
   pull-requests: write
+  packages: read
 
 concurrency:
   group: bump-app-images
@@ -28,13 +28,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Resolve build stamp
+        id: stamp
+        env:
+          STAMP: ${{ github.event.inputs.stamp }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$STAMP" ]; then
+            # Newest stamp that BOTH packages carry (a build pushes them together).
+            tags() {
+              local t
+              t=$(curl -fsS -u "x:${GHCR_TOKEN}" \
+                "https://ghcr.io/token?service=ghcr.io&scope=repository:starcitizentools/$1:pull" \
+                | jq -r .token)
+              curl -fsS -H "Authorization: Bearer $t" \
+                "https://ghcr.io/v2/starcitizentools/$1/tags/list?n=10000" | jq -r '.tags[]'
+            }
+            mw=$(tags mediawiki | grep -E '^smw-[0-9]' | sed 's/^smw-//' | sort -u)
+            ng=$(tags nginx | grep -E '^[0-9]' | sort -u)
+            STAMP=$(comm -12 <(echo "$mw") <(echo "$ng") | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1)
+            [ -n "$STAMP" ] || { echo "::error::No common build stamp found in GHCR (is this repo granted read access to the packages?)"; exit 1; }
+            echo "Newest stamp in GHCR: ${STAMP}"
+          fi
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+
       - name: Rewrite manifests
         id: rewrite
         env:
-          STAMP: ${{ github.event.inputs.stamp || github.event.client_payload.stamp }}
+          STAMP: ${{ steps.stamp.outputs.stamp }}
         run: |
           set -euo pipefail
-          [ -n "$STAMP" ] || { echo "::error::No build stamp given."; exit 1; }
           ./update-images.sh "$STAMP"
           if git diff --quiet; then
             echo "Manifests already at ${STAMP}; nothing to do."
@@ -42,13 +66,12 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
 
       - name: Open or update the PR
         if: steps.rewrite.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          STAMP: ${{ steps.rewrite.outputs.stamp }}
+          STAMP: ${{ steps.stamp.outputs.stamp }}
         run: |
           set -euo pipefail
           branch="bump-app-images/${STAMP}"
