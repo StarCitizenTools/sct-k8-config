@@ -18,8 +18,15 @@ name: Delete a stuck pod
 #   * Refuses names that do not look like a pod in the default namespace.
 #
 # This is a recovery lever, not routine maintenance. For CronJob-spawned Jobs
-# use "Abort maintenance job"; for the ES data-volume case use
-# "Elasticsearch Recover", which also handles the stale VolumeAttachment.
+# use "Abort maintenance job".
+#
+# The stuck-volume case (pod Pending/PodInitializing after an ungraceful node
+# reboot, because a stale VolumeAttachment still pins its PV to the old node)
+# needs the optional escalation below: deleting the pod alone does not clear the
+# attachment, so the replacement gets stuck the same way. Confirm the diagnosis
+# with "Kube-system Diagnostics" first (it prints volumeattachments/pvc and
+# describes every non-Running pod) -- deleting a live attachment for a pod that
+# is merely slow would rip the volume out from under a running process.
 on:
   workflow_dispatch:
     inputs:
@@ -31,6 +38,11 @@ on:
         description: Type the pod name again to confirm
         required: true
         type: string
+      also_clear_volumeattachment:
+        description: 'Escalation: also delete the stale VolumeAttachment(s) for this pod''s volumes (only if a plain delete did not clear a stuck mount)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -91,11 +103,45 @@ jobs:
           kubectl get pod "$POD" -n default \
             -o jsonpath='{range .status.initContainerStatuses[*]}  {.name}: ready={.ready} state={.state}{"\n"}{end}'
 
+          # Resolve the pod's PVs NOW and carry them to the escalation step: once
+          # the pod is deleted its volume list is gone. Empty lines come from
+          # volumes that are not PVCs (configMap, emptyDir, secret).
+          PVS=""
+          for claim in $(kubectl get pod "$POD" -n default \
+                -o jsonpath='{range .spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}' | grep -v '^$'); do
+            pv=$(kubectl get pvc "$claim" -n default -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+            if [ -n "$pv" ]; then PVS="$PVS $pv"; fi
+          done
+          echo
+          echo "PVs backing this pod:${PVS:- (none)}"
+          echo "POD_PVS=${PVS# }" >> "$GITHUB_ENV"
+
       - name: Delete
         run: |
           set -euo pipefail
           kubectl delete pod "$POD" -n default --wait=false
           echo "Deleted '$POD'. Its controller will recreate it from the current spec."
+
+      - name: Clear stale VolumeAttachment (optional escalation)
+        if: ${{ inputs.also_clear_volumeattachment }}
+        run: |
+          set -uo pipefail
+          if [ -z "${POD_PVS:-}" ]; then
+            echo "The pod had no PersistentVolumes; nothing to clear."
+            exit 0
+          fi
+          for pv in $POD_PVS; do
+            VAS=$(kubectl get volumeattachment \
+              -o jsonpath="{range .items[?(@.spec.source.persistentVolumeName=='$pv')]}{.metadata.name}{'\n'}{end}" 2>/dev/null || true)
+            if [ -z "${VAS:-}" ]; then
+              echo "No VolumeAttachment references $pv; nothing to clear."
+              continue
+            fi
+            for va in $VAS; do
+              echo "Deleting stale VolumeAttachment $va (pv=$pv) to force a clean detach/attach..."
+              kubectl delete volumeattachment "$va" --wait=false || echo "(could not delete $va)"
+            done
+          done
 
       - name: Show the replacement
         run: |
