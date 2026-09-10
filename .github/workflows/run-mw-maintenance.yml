@@ -20,13 +20,16 @@ on:
           # Read-only.
           - showSiteStats.php
           - showJobs.php
-          # Write only when `apply` is ticked.
+          # Dry-run unless `apply` is ticked.
           - namespaceDupes.php
           - cleanupTitles.php
-          # Repair; heavy but not destructive.
+          - cleanupImages.php
+          - fixDoubleRedirects.php
+          # No dry-run upstream: these require `apply`.
+          - cleanupUploadStash.php
           - refreshLinks.php
       apply:
-        description: "WRITE MODE: actually change data (unticked = dry-run/report only)"
+        description: "WRITE MODE: allow this run to change data"
         required: false
         default: false
         type: boolean
@@ -91,14 +94,22 @@ jobs:
           # means serialising it, and an empty array round-trips through
           # `printf '%s\n'` as a single empty-string argument.
           ARGS=()
-          # cleanupTitles writes unless given --dry-run; namespaceDupes reports
-          # unless given --fix. Opposite defaults, so map them here.
+          # Four groups because upstream is not consistent: some take --dry-run,
+          # namespaceDupes instead reports unless given --fix, and some have no
+          # dry-run at all -- those must not be presented as if leaving `apply`
+          # unticked made them safe.
           case "$SCRIPT" in
-            cleanupTitles.php)
+            cleanupTitles.php|cleanupImages.php|fixDoubleRedirects.php)
               [ "$APPLY" = "true" ] || ARGS+=(--dry-run)
               ;;
             namespaceDupes.php)
               [ "$APPLY" = "true" ] && ARGS+=(--fix) || true
+              ;;
+            cleanupUploadStash.php|refreshLinks.php)
+              if [ "$APPLY" != "true" ]; then
+                echo "::error::$SCRIPT has no dry-run mode -- it always writes. Tick apply to run it."
+                exit 1
+              fi
               ;;
             *)
               if [ "$APPLY" = "true" ]; then
