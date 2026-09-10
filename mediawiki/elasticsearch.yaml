@@ -2,15 +2,19 @@ apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
   name: elasticsearch
+  annotations:
+    # Stops the Elasticsearch process for the OpenSearch migration while keeping
+    # the Pod and its PVC. ECK holds the pod at an elastic-internal-suspend init
+    # container, so the ~2Gi JVM heap is released but nothing is destroyed --
+    # rollback is deleting this annotation.
+    # NOT count: 0, which the ECK admission webhook rejects outright:
+    #   "Elasticsearch needs to have at least one master node"
+    eck.k8s.elastic.co/suspend: "elasticsearch-es-elasticsearch-0"
 spec:
   version: 7.10.2
   nodeSets:
   - name: elasticsearch
-    # Scaled to zero for the OpenSearch migration, NOT deleted: the PVC and its
-    # data survive, so rollback is count: 1 plus reverting the CirrusSearch
-    # cluster config. Deleting the manifest instead would orphan the object --
-    # CI applies without prune -- and destroy that rollback path.
-    count: 0
+    count: 1
     podTemplate:
       spec:
         initContainers:
