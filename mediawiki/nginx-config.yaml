@@ -8,12 +8,15 @@ data:
         # .github/workflows/kubernetes-deploy.yml when this file changes.
         # error_log /var/log/nginx/debug.log debug;
 
-        # Stock `main` plus the per-request id. The leading fields are byte-for-byte
-        # the default so anything parsing the old format keeps working.
+        # Stock `main` plus the per-request id and timings. The leading fields are
+        # byte-for-byte the default so anything parsing the old format keeps working.
+        # No $upstream_cache_status: nothing is cached at this tier, so it would only
+        # ever log "-" -- caching is at the CDN, and ray= looks a request up there.
         log_format mw '$remote_addr - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for" '
-                      'rid=$request_id';
+                      'rid=$request_id rt=$request_time uct=$upstream_connect_time '
+                      'urt=$upstream_response_time ray=$http_cf_ray';
 
         server {
           listen 0.0.0.0:80;
