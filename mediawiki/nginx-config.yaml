@@ -8,8 +8,16 @@ data:
         # .github/workflows/kubernetes-deploy.yml when this file changes.
         # error_log /var/log/nginx/debug.log debug;
 
+        # Stock `main` plus the per-request id. The leading fields are byte-for-byte
+        # the default so anything parsing the old format keeps working.
+        log_format mw '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for" '
+                      'rid=$request_id';
+
         server {
           listen 0.0.0.0:80;
+          access_log /dev/stdout mw;
           server_name starcitizen.tools;
           root /var/www/mediawiki;
           index index.php;
@@ -80,6 +88,7 @@ data:
           location /rest.php {
             try_files $uri $uri/ /rest.php?$args;
             include fastcgi_params;
+            fastcgi_param UNIQUE_ID $request_id;
             fastcgi_param SCRIPT_FILENAME	$document_root/rest.php;
             fastcgi_pass $php_fpm;
           }
@@ -91,6 +100,7 @@ data:
             location ~ \.php$ {
               try_files $uri $uri/ =404; # Don't let php execute non-existent php files
               include fastcgi_params;
+              fastcgi_param UNIQUE_ID $request_id;
               fastcgi_pass $php_fpm;
               fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             }
@@ -162,6 +172,7 @@ data:
           # Handling for the article path
           location @mediawiki {
             include fastcgi_params;
+            fastcgi_param UNIQUE_ID $request_id;
             # article path should always be passed to index.php
             fastcgi_param SCRIPT_FILENAME	$document_root/index.php;
             fastcgi_pass $php_fpm;
@@ -175,6 +186,7 @@ data:
 
             # Run the thumb.php script
             include fastcgi_params;
+            fastcgi_param UNIQUE_ID $request_id;
             fastcgi_param SCRIPT_FILENAME	$document_root/thumb.php;
             fastcgi_pass $php_fpm;
           }
