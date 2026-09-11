@@ -39,10 +39,14 @@ spec:
           resources:
             requests:
               memory: "128Mi"
+              # Deliberately low: requests are the cgroup weight, so the runner
+              # only expands into idle CPU and yields to php-web (2000m) at once.
               cpu: "100m"
             limits:
               memory: "1Gi"
-              cpu: "500m"
+              # Not higher: valkey also requests 100m, so it ties this container
+              # on weight wherever the two are co-scheduled.
+              cpu: "1000m"
           envFrom:
             - secretRef:
                 name: mediawiki-keys
