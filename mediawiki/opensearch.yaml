@@ -100,15 +100,18 @@ spec:
             - containerPort: 9200
           # The whole corpus is under 1GB (content 453MB + general 292MB +
           # titlesuggest 4.4MB), so this is sized to fit rather than to grow.
-          # The nodes are chronically memory-over-committed; keep the heap and
-          # the limit in step if either is ever raised.
+          # The limit is deliberately ~3x the heap, not the usual 2x: the JVM's
+          # non-heap floor here is ~450MB on top of the 512m heap (working set
+          # sat at ~970MB against the old 1Gi limit, leaving Lucene ~90MB of
+          # page cache). Raise the heap, not just the limit, only with care --
+          # heap is anonymous memory and anon growth is what wedges these nodes.
           resources:
             requests:
               cpu: "100m"
-              memory: "768Mi"
+              memory: "1Gi"
             limits:
               cpu: "1"
-              memory: "1Gi"
+              memory: "1.5Gi"
           volumeMounts:
             - name: data
               mountPath: /usr/share/opensearch/data
