@@ -194,7 +194,7 @@ spec:
             emptyDir: {}
           containers:
           - name: cronjob-sitemap
-            image: ghcr.io/starcitizentools/mediawiki:smw-26.09.10.662
+            image: ghcr.io/starcitizentools/mediawiki:smw-26.09.11.663
             # PHP's own memory_limit (--memory-limit in generate-sitemap.sh) must
             # stay well UNDER this cgroup limit: a PHP fatal is logged and exits
             # non-zero, a cgroup
