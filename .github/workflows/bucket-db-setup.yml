@@ -1,0 +1,136 @@
+name: Set up the Bucket database account
+
+# Creates the least-privilege MariaDB account that Extension:Bucket connects as,
+# and the Secret holding its password. Run this BEFORE any manifest references
+# bucket-db-password, and before the image that loads Bucket is deployed.
+#
+# Why a separate account at all: Bucket opens its own second connection and runs
+# reads built from user-authored Lua on it. MediaWiki connects as root, which
+# holds ALL PRIVILEGES WITH GRANT OPTION, so a query-builder defect on that
+# connection would reach wikiuser, wikioathauth and the rest. The grant set below
+# bounds that to Bucket's own tables. It does not defend against PHP execution --
+# root's password is in the same pod environment either way -- but a SQL-layer
+# bug has no way to read it.
+#
+# The password is generated here, never stored in a GitHub secret, and reaches
+# the database over stdin so it never appears in argv or a workflow log.
+#
+# Re-running rotates the password. The running pods keep the old one until they
+# restart, so a rotation must be followed by a deploy or the extension will fail
+# to authenticate.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "bucket" to confirm creating/rotating the account
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bucket-db-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "bucket" ]; then
+            echo "::error::confirm must be exactly \"bucket\"."
+            exit 1
+          fi
+
+      - name: Create the account and its Secret
+        run: |
+          set -euo pipefail
+
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "Using pod: $pod"
+
+          # Hex so the value needs no quoting anywhere it is interpolated.
+          PW=$(openssl rand -hex 24)
+          echo "::add-mask::$PW"
+
+          # Idempotent: create-or-replace, so a rotation is the same command.
+          kubectl create secret generic bucket-db-password \
+            --from-literal=BUCKET_DB_PASSWORD="$PW" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # SQL arrives on stdin, so the password is never in argv or the log.
+          # sql.php reads piped input statement by statement and, because stdin is
+          # not a tty, aborts on the first error rather than continuing.
+          #
+          # CREATE is included on the two update.php-owned tables on purpose: a
+          # table-level GRANT on a table that does not exist yet is refused with
+          # ERROR 1146 unless the grant includes CREATE. Without it these grants
+          # could not be applied until after update.php had run, which would leave
+          # a window where Bucket is loaded but unprivileged -- and page deletion
+          # calls into Bucket in every namespace, so that window would surface as
+          # failed deletions wiki-wide.
+          #
+          # Per-bucket tables are not granted here; BucketDatabase grants each one
+          # from the root connection as it creates it.
+          kubectl exec -i "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql >/dev/null <<SQL
+          CREATE USER IF NOT EXISTS \`bucket\`@\`%\` IDENTIFIED BY '$PW';
+          ALTER USER \`bucket\`@\`%\` IDENTIFIED BY '$PW';
+          GRANT SELECT ON \`scw_PROD\`.\`wikicategorylinks\` TO \`bucket\`@\`%\`;
+          GRANT SELECT ON \`scw_PROD\`.\`wikilinktarget\` TO \`bucket\`@\`%\`;
+          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON \`scw_PROD\`.\`wikibucket_pages\` TO \`bucket\`@\`%\`;
+          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON \`scw_PROD\`.\`wikibucket_schemas\` TO \`bucket\`@\`%\`;
+          SQL
+
+          echo "Account and Secret written."
+
+      - name: Verify
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+
+          echo "=== Secret holds the expected key (the value is not printed) ==="
+          len=$(kubectl get secret bucket-db-password \
+            -o jsonpath='{.data.BUCKET_DB_PASSWORD}' | wc -c)
+          if [ "$len" -lt 16 ]; then
+            echo "::error::bucket-db-password has no usable BUCKET_DB_PASSWORD key."
+            exit 1
+          fi
+          echo "OK: BUCKET_DB_PASSWORD present."
+
+          echo
+          echo "=== grants held by the account ==="
+          # No --json: SHOW GRANTS returns a dynamically named column.
+          kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql \
+            --query="SHOW GRANTS FOR \`bucket\`@\`%\`;"
+
+          echo
+          echo "The account is not usable by MediaWiki until a manifest adds"
+          echo "bucket-db-password to envFrom and the pods restart."
