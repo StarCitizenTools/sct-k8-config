@@ -1,0 +1,91 @@
+name: Apply Bucket database grants
+
+# Re-applies the full grant set for the Bucket database account. Idempotent and
+# safe to run at any time.
+#
+# Separate from "Set up the Bucket database account" on purpose: that workflow
+# generates a password and ALTERs the account to match, so re-running it rotates
+# the credential while the running pods still hold the old one, breaking the
+# extension until the next deploy. Grants change more often than the account
+# does, so they get a workflow that touches no credential at all.
+#
+# bucket__bucket_issues is granted here explicitly. Per-bucket tables receive a
+# GRANT ALL from the root connection as BucketDatabase creates them, but the
+# issues table is created by update.php as root and so never passes through that
+# path. Bucket writes to it through the ordinary put path whenever a page logs a
+# validation issue, so without this the deferred LinksUpdate on that page fails
+# with "SELECT command denied".
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "grants" to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bucket-db-grants
+  cancel-in-progress: false
+
+jobs:
+  grants:
+    runs-on: ubuntu-latest
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "grants" ]; then
+            echo "::error::confirm must be exactly \"grants\"."
+            exit 1
+          fi
+
+      - name: Apply grants
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "Using pod: $pod"
+
+          kubectl exec -i "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql >/dev/null <<'SQL'
+          GRANT SELECT ON `scw_PROD`.`wikicategorylinks` TO `bucket`@`%`;
+          GRANT SELECT ON `scw_PROD`.`wikilinktarget` TO `bucket`@`%`;
+          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON `scw_PROD`.`wikibucket_pages` TO `bucket`@`%`;
+          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON `scw_PROD`.`wikibucket_schemas` TO `bucket`@`%`;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON `scw_PROD`.`wikibucket__bucket_issues` TO `bucket`@`%`;
+          SQL
+
+          echo "Grants applied."
+
+      - name: Verify
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql \
+            --query="SHOW GRANTS FOR \`bucket\`@\`%\`;"
