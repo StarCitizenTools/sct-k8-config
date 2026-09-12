@@ -1,0 +1,107 @@
+name: Bucket preflight checks
+
+# Read-only. Answers the questions that decide whether Extension:Bucket can be
+# installed at all, before an image is built or a manifest is touched.
+#
+#   1. Does the MediaWiki DB account still hold GRANT OPTION? Bucket runs
+#      `GRANT ALL ON <table> TO <bucketuser>` on the MAIN connection every time a
+#      bucket is created, not just at install, so without it every bucket
+#      creation fails. This step FAILS THE JOB if the privilege is gone.
+#   2. How much connection headroom is there? Bucket opens a SECOND connection
+#      per process that writes, and mariadb-config.yaml never sets
+#      max_connections, so the cluster is on MariaDB's default of 151.
+#   3. Is there leftover Bucket state? Tables or a `bucket` account already
+#      present would mean this is a re-install, which behaves differently --
+#      update.php is a no-op where updatelog already has the key.
+#
+# It also prints mariadb-service-temp, which publishes port 3306 on every node
+# as NodePort 32167. That is unrelated to Bucket and worth its own decision;
+# note the deploy applies without prune, so deleting it from the repo will not
+# remove it from the cluster.
+#
+# Delete this workflow once Bucket is installed, the way the Elasticsearch
+# teardown workflow was removed in bda7664.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Preflight
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "Using pod: $pod"
+
+          # --json: the default result printer is print_r() of a stdClass, which
+          # is not parseable. --json emits json_encode() of the row list.
+          run() { kubectl exec "$pod" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql --json --query="$1"; }
+
+          echo
+          echo "=== 1. GRANT OPTION on the MediaWiki DB account (hard gate) ==="
+          # IS_GRANTABLE is how MariaDB exposes GRANT OPTION -- there is no
+          # PRIVILEGE_TYPE='GRANT OPTION' row to look for. The doubled quotes
+          # build the 'user'@% pattern that GRANTEE is stored in.
+          grants=$(run "SELECT CURRENT_USER() AS connected_as, COUNT(*) AS grantable_privs \
+            FROM information_schema.USER_PRIVILEGES \
+            WHERE IS_GRANTABLE = 'YES' \
+            AND GRANTEE LIKE CONCAT('''', SUBSTRING_INDEX(CURRENT_USER(), '@', 1), '''@%');")
+          echo "$grants"
+          grantable=$(printf '%s' "$grants" | jq -r '.[0].grantable_privs // 0')
+          if [ "$grantable" -eq 0 ]; then
+            echo "::error::The MediaWiki DB account has no GRANT OPTION. Bucket cannot create buckets; do not proceed."
+            exit 1
+          fi
+          echo "OK: $grantable grantable privilege rows."
+
+          echo
+          echo "=== 2. Connection headroom ==="
+          # 2 php-mediawiki replicas x pm.max_children=30, plus the jobrunner and
+          # four CronJobs. Bucket roughly doubles the per-process connection count
+          # for anything that writes.
+          run "SELECT @@max_connections AS max_connections, \
+               (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS \
+                 WHERE VARIABLE_NAME = 'MAX_USED_CONNECTIONS') AS max_used, \
+               (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS \
+                 WHERE VARIABLE_NAME = 'THREADS_CONNECTED') AS in_use_now;"
+
+          echo
+          echo "=== 3. Pre-existing Bucket state (expect all zeros on a clean install) ==="
+          # Table names are spelled with the wiki's $wgDBprefix ("wiki") on
+          # purpose: sql.php hands the string to Database::query() untouched, and
+          # the prefix substitution only happens in sourceStream(), so an
+          # unprefixed name here silently matches nothing or errors 1146.
+          run "SELECT \
+               (SELECT COUNT(*) FROM information_schema.TABLES \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wikibucket%') AS bucket_tables, \
+               (SELECT COUNT(*) FROM wikiupdatelog WHERE ul_key LIKE '%bucket%') AS updatelog_rows;"
+
+          echo
+          echo "=== 4. mariadb-service-temp (unrelated to Bucket, reported for triage) ==="
+          kubectl get service mariadb-service-temp \
+            -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,NODEPORT:.spec.ports[0].nodePort \
+            || echo "not present"

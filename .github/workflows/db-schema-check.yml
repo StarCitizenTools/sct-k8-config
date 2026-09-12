@@ -36,12 +36,17 @@ jobs:
             php /var/www/mediawiki/maintenance/run.php sql --query="$1"; }
 
           echo "=== Do these tables physically exist? ==="
+          # Names carry $wgDBprefix ("wiki"). sql.php passes the string straight
+          # to Database::query(), which does no prefix substitution -- that only
+          # happens in sourceStream() for .sql files. Unprefixed names here match
+          # nothing, which reads as "the table is missing" and is the exact wrong
+          # answer for a drift check.
           run "SELECT table_name FROM information_schema.tables \
                WHERE table_schema = DATABASE() \
-               AND table_name IN ('searchdigest','searchdigest_blocks','aggrid_data') \
+               AND table_name IN ('wikisearchdigest','wikisearchdigest_blocks','wikiaggrid_data') \
                ORDER BY table_name;"
 
           echo "=== updatelog entries for searchdigest / aggrid ==="
-          run "SELECT ul_key FROM updatelog \
+          run "SELECT ul_key FROM wikiupdatelog \
                WHERE ul_key LIKE '%searchdigest%' OR ul_key LIKE '%aggrid%' \
                ORDER BY ul_key;"
