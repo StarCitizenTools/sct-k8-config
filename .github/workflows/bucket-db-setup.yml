@@ -94,8 +94,11 @@ jobs:
           # calls into Bucket in every namespace, so that window would surface as
           # failed deletions wiki-wide.
           #
-          # Per-bucket tables are not granted here; BucketDatabase grants each one
-          # from the root connection as it creates it.
+          # Per-bucket tables are not granted here: BucketDatabase grants each one
+          # from the root connection as it creates it. bucket__bucket_issues is the
+          # exception -- update.php creates it as root, so it never passes through
+          # that path, and Bucket writes to it whenever a page logs a validation
+          # issue.
           kubectl exec -i "$pod" -c php-mediawiki -- \
             php /var/www/mediawiki/maintenance/run.php sql >/dev/null <<SQL
           CREATE USER IF NOT EXISTS \`bucket\`@\`%\` IDENTIFIED BY '$PW';
@@ -104,6 +107,7 @@ jobs:
           GRANT SELECT ON \`scw_PROD\`.\`wikilinktarget\` TO \`bucket\`@\`%\`;
           GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON \`scw_PROD\`.\`wikibucket_pages\` TO \`bucket\`@\`%\`;
           GRANT SELECT, INSERT, UPDATE, DELETE, CREATE ON \`scw_PROD\`.\`wikibucket_schemas\` TO \`bucket\`@\`%\`;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON \`scw_PROD\`.\`wikibucket__bucket_issues\` TO \`bucket\`@\`%\`;
           SQL
 
           echo "Account and Secret written."
