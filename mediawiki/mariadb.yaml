@@ -19,19 +19,6 @@ spec:
   type: ClusterIP
 ---
 apiVersion: v1
-kind: Service
-metadata:
-  name: mariadb-service-temp
-spec:
-  selector:
-    app: mariadb
-  ports:
-    - nodePort: 32167
-      port: 3306
-      targetPort: 3306
-  type: NodePort
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mariadb-pv-claim

@@ -1,0 +1,93 @@
+name: Delete the MariaDB NodePort service
+
+# One-shot. Removes the mariadb-service-temp Service, which published the
+# production database on port 3306 of every node as NodePort 32167.
+#
+# Why a workflow and not just deleting the block from mariadb.yaml: CI deploys
+# with Azure/k8s-deploy in its basic strategy, which applies without pruning.
+# Removing an object from the repo therefore leaves it running in the cluster
+# forever. Deleting it needs an explicit kubectl delete, and the operator has
+# no kubectl.
+#
+# SAFETY:
+#   * Deletes ONE Service by exact name, in the default namespace.
+#   * mariadb-service (ClusterIP) is untouched. That is the one everything
+#     actually uses: $wgDBserver is mariadb-service.default.svc.cluster.local,
+#     the backup CronJob dumps through the same name, and it is the
+#     StatefulSet's serviceName. Nothing in either repo references
+#     mariadb-service-temp or port 32167.
+#   * No data is touched. A Service is a routing object; the PVC and the
+#     StatefulSet are unaffected.
+#   * Reversible: re-adding the block to mariadb.yaml recreates it on the next
+#     deploy, though a recreated NodePort may be assigned a different port.
+#   * Gated behind a typed confirmation.
+#
+# The one thing this DOES break is connecting to the database from outside the
+# cluster via a node IP on 32167 -- a desktop SQL client, say. If that is how
+# anyone reaches this database, arrange another route first.
+#
+# Delete this workflow once it has been run.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "mariadb-service-temp" to confirm
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delete-mariadb-nodeport
+  cancel-in-progress: false
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "mariadb-service-temp" ]; then
+            echo "::error::confirm must be exactly \"mariadb-service-temp\"."
+            exit 1
+          fi
+
+      - name: Delete
+        run: |
+          set -euo pipefail
+
+          echo "=== before ==="
+          kubectl get service mariadb-service mariadb-service-temp \
+            -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,NODEPORT:.spec.ports[0].nodePort
+
+          # Named explicitly rather than by selector: both Services select
+          # app=mariadb, so a selector-based delete would take out the ClusterIP
+          # the whole wiki depends on.
+          kubectl delete service mariadb-service-temp --ignore-not-found
+
+          echo
+          echo "=== after (mariadb-service must still be here) ==="
+          kubectl get service mariadb-service \
+            -o custom-columns=NAME:.metadata.name,TYPE:.spec.type
+          if kubectl get service mariadb-service-temp >/dev/null 2>&1; then
+            echo "::error::mariadb-service-temp is still present."
+            exit 1
+          fi
+          echo "mariadb-service-temp is gone; mariadb-service is intact."
