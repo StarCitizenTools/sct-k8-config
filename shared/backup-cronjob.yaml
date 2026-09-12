@@ -75,6 +75,8 @@ spec:
                 name: backup-keys
             - secretRef:
                 name: prd-db-password
+            - secretRef:
+                name: bucket-db-password
           volumes:
           - name: tmp-volume
             emptyDir: {}
@@ -222,6 +224,8 @@ spec:
                 name: mediawiki-keys
             - secretRef:
                 name: prd-db-password
+            - secretRef:
+                name: bucket-db-password
             - secretRef:
                 name: sitemap-keys
             command: ["/bin/sh", "/scripts/generate-sitemap.sh"]

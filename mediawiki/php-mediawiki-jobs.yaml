@@ -53,6 +53,8 @@ spec:
             - secretRef:
                 name: prd-db-password
             - secretRef:
+                name: bucket-db-password
+            - secretRef:
                 name: images-keys
             - secretRef:
                 name: uex-keys
@@ -73,6 +75,8 @@ spec:
                 name: mediawiki-keys
             - secretRef:
                 name: prd-db-password
+            - secretRef:
+                name: bucket-db-password
           env:
             - name: RUNNER_TYPE
               value: Chron
