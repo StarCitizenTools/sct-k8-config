@@ -117,13 +117,11 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      # A retry re-runs the whole script. This job wedged a node on 2026-06-15
-      # when it still ran SemanticMediaWiki:rebuildData, so it stays bounded --
-      # activeDeadlineSeconds is wall-clock across all attempts. Now that only
-      # updateSpecialPages and initSiteStats remain, the 6h ceiling is far
-      # larger than the run needs; it is a backstop, not a budget.
+      # activeDeadlineSeconds runs from Job start, so it covers scheduling and
+      # the image pull -- cold pulls here have taken ~25 min. Size it for that,
+      # never for the steps, which take seconds.
       backoffLimit: 1
-      activeDeadlineSeconds: 21600
+      activeDeadlineSeconds: 1800
       template:
         spec:
           volumes:
@@ -134,17 +132,18 @@ spec:
             # Steps live in scripts/mw-biweekly.sh.
             - name: cronjob-mw-biweekly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.09.18.677
-              # This job was the direct trigger of the 2026-06-15 11:40 UTC outage,
-              # back when it ran SemanticMediaWiki:rebuildData over ~282k entities:
-              # BestEffort + no limit -> ~4 of 4 cores -> kubelet wedged. The cap is
-              # what made that unrepeatable, so it stays whatever the steps cost.
+              # Uncapped, this job wedged a node on 2026-06-15; the cap is why
+              # that cannot repeat, so keep one. Requests are reserved on a
+              # cluster already tight on memory, so keep them near the real cost.
+              # Keep the memory limit above PHP's memory_limit (512M, set in the
+              # image) so a runaway reports instead of being OOMKilled silently.
               resources:
                 requests:
-                  cpu: "250m"
-                  memory: "512Mi"
+                  cpu: "100m"
+                  memory: "256Mi"
                 limits:
-                  cpu: "2"
-                  memory: "4Gi"
+                  cpu: "1"
+                  memory: "1Gi"
               envFrom:
                 - secretRef:
                     name: mediawiki-keys
