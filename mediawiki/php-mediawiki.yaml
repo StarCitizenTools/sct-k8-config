@@ -55,36 +55,6 @@ spec:
           - name: single-request-reopen
           - name: ndots
             value: "2"
-      initContainers:
-        # SMW schema setup. Lives as an initContainer (not a postStart hook) so
-        # its stdout/stderr is captured by the normal log pipeline -- visible in
-        # `kubectl logs -c smw-setup-store`, Loki, and the failure-debug job.
-        # postStart hook output only lands in the Event message, which is
-        # truncated and not shipped anywhere.
-        #
-        # SMW 7 dropped the .smw.json upgrade-key file, so this init no longer
-        # shares anything with the main container -- setupStore just applies any
-        # pending SMW store schema changes against the DB.
-        #
-        # SMW serves its 503 splash for the whole run, so do only what a deploy
-        # needs: table optimization runs from cronjob-mw-biweekly, the bundled
-        # page import from update.php. Not --quiet: the summary logs per-phase
-        # timings.
-        - name: smw-setup-store
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.18.675
-          command:
-            - /bin/sh
-            - -c
-            - php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --skip-optimize --skip-import
-          envFrom:
-            - secretRef:
-                name: mediawiki-keys
-            - secretRef:
-                name: images-keys
-            - secretRef:
-                name: prd-db-password
-            - secretRef:
-                name: bucket-db-password
       containers:
         - name: php-mediawiki
           image: ghcr.io/starcitizentools/mediawiki:smw-26.09.18.675
