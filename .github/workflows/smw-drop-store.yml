@@ -1,0 +1,217 @@
+name: Drop the SMW store
+
+# Runs `SemanticMediaWiki:setupStore --delete`, which DROPS every table the SMW
+# store owns. This is the uninstall step for Extension:SemanticMediaWiki. There
+# is no undo: recreating the tables is `setupStore` again followed by a full
+# `rebuildData`, which last measured ~282k entities.
+#
+# ORDER MATTERS, AND THE OBVIOUS ORDER IS THE WRONG ONE.
+#
+# `--delete` enumerates the tables from the LOADED store, so it only exists
+# while SMW is still installed. That rules out removing the extension first.
+# But it also means that the moment this finishes, the wiki is running SMW
+# against tables that are gone: every edit and every uncached parse hits a
+# missing table, and the queued smw.update jobs fail as they drain. That window
+# lasts until an image WITHOUT SMW is deployed -- through an image build, a
+# bump PR and a rollout, so realistically 15-30 minutes of a broken wiki.
+#
+# For a permanent uninstall, prefer the other order:
+#
+#   1. Deploy the image with SemanticMediaWiki removed from LocalSettings.php
+#      and composer.json. The wiki is healthy immediately; the smw_ tables are
+#      simply orphaned and cost nothing but disk.
+#   2. Drop those tables with a plain SQL workflow, which needs no extension
+#      loaded and also catches tables this script cannot (see below).
+#
+# This workflow is the right tool for the other case: wiping the store while
+# KEEPING SMW, to rebuild it from scratch.
+#
+# WHAT IT WILL LEAVE BEHIND: `$store->drop()` only knows the property tables
+# currently registered. Tables belonging to a fixed property whose extension
+# has already been removed are invisible to it -- SESP's smw_ftp_sesp_pageimg,
+# smw_ftp_sesp_userreg and smw_ftp_sesp_usereditcnt are exactly that case. The
+# post-check step below lists whatever survives instead of reporting success.
+#
+# sql.php is used here for two fixed, read-only SHOW TABLES statements. That is
+# the bucket-db-setup.yml pattern -- constant SQL in a purpose-built workflow --
+# and NOT a reason to add sql.php to the run-mw-maintenance.yml allowlist, where
+# the statement would be operator-supplied.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "DROP SMW STORE" to confirm
+        required: true
+        type: string
+      acknowledge_outage:
+        description: "I understand the wiki stays broken until an SMW-less image is deployed"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smw-drop-store
+  cancel-in-progress: false
+
+jobs:
+  drop:
+    runs-on: ubuntu-latest
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+      ACK: ${{ inputs.acknowledge_outage }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "DROP SMW STORE" ]; then
+            echo "::error::confirm must be exactly \"DROP SMW STORE\"."
+            exit 1
+          fi
+          if [ "$ACK" != "true" ]; then
+            echo "::error::Tick the acknowledgement. Read the header of this workflow first --"
+            echo "for a permanent uninstall, deploying the SMW-less image BEFORE dropping the"
+            echo "tables avoids the outage window entirely."
+            exit 1
+          fi
+
+      # rebuildData holds long transactions against the tables this is about to
+      # drop, and the biweekly job can run for hours. Taking the store out from
+      # under it is the 2026-06-15 shape with a DDL statement added.
+      - name: Refuse if a maintenance Job is active
+        run: |
+          set -euo pipefail
+          active=""
+          names=$(kubectl get jobs -n default \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)
+          for j in $names; do
+            case "$j" in
+              cronjob-mw-*|cronjob-sitemap*|cronjob-mariadb-backup*) ;;
+              *) continue ;;
+            esac
+            complete=$(kubectl get job "$j" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' || true)
+            failed=$(kubectl get job "$j" -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' || true)
+            if [ "$complete" != "True" ] && [ "$failed" != "True" ]; then
+              active="$active $j"
+            fi
+          done
+          if [ -n "$active" ]; then
+            echo "::error::Maintenance Job(s) still active:$active"
+            echo "Wait, or stop them with the 'Abort maintenance job' workflow."
+            exit 1
+          fi
+          echo "No active maintenance Jobs."
+
+      - name: Resolve the pod
+        id: pod
+        run: |
+          set -euo pipefail
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [ -z "$pod" ]; then
+            echo "::error::No Running php-mediawiki pod found."
+            exit 1
+          fi
+          echo "pod=$pod" >> "$GITHUB_OUTPUT"
+          echo "pod: $pod"
+          kubectl get pod "$pod" -o jsonpath='{"image="}{.spec.containers[?(@.name=="php-mediawiki")].image}{"\n"}'
+
+      # If SMW is already gone from the deployed image there is nothing for this
+      # script to enumerate, and the run would "succeed" having dropped nothing.
+      - name: Check SMW is still installed
+        env:
+          POD: ${{ steps.pod.outputs.pod }}
+        run: |
+          set -euo pipefail
+          if ! kubectl exec "$POD" -c php-mediawiki -- \
+            test -f /var/www/mediawiki/extensions/SemanticMediaWiki/maintenance/setupStore.php; then
+            echo "::error::SemanticMediaWiki is not in the deployed image, so --delete cannot"
+            echo "enumerate its tables. Drop the leftover smw_ tables with SQL instead."
+            exit 1
+          fi
+          echo "SemanticMediaWiki is present."
+
+      # The `\_` is escaped because _ is a LIKE wildcard. Quoted heredoc so the
+      # backslash reaches MariaDB instead of being eaten by the shell.
+      - name: Inventory before
+        env:
+          POD: ${{ steps.pod.outputs.pod }}
+        run: |
+          set -euo pipefail
+          echo "::group::smw_ tables before"
+          kubectl exec -i "$POD" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql <<'SQL' | tee /tmp/before.txt
+          SHOW TABLES LIKE 'wikismw\_%';
+          SQL
+          echo "::endgroup::"
+          # Anchored on the trailing _ so the result header, which echoes the
+          # pattern back as `wikismw\_%`, is not counted as a table.
+          echo "count: $(grep -oE 'wikismw_[A-Za-z0-9_]+' /tmp/before.txt | sort -u | wc -l)"
+
+      # --nochecks is mandatory, not a shortcut: without it the script prompts
+      # for the literal string DELETE via readconsole(), and a non-TTY exec gets
+      # EOF and aborts having done nothing.
+      #
+      # This shares the serving pod's CPU with live traffic, but the work is
+      # DROP TABLE inside MariaDB, so the PHP side is idle while it waits.
+      - name: Drop the store
+        env:
+          POD: ${{ steps.pod.outputs.pod }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Dropping every SemanticMediaWiki table. This is not reversible."
+          kubectl exec "$POD" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php SemanticMediaWiki:setupStore --delete --nochecks
+
+      # Reporting "done" without looking is how the SESP tables got orphaned in
+      # the first place. Name what survived.
+      - name: Inventory after
+        env:
+          POD: ${{ steps.pod.outputs.pod }}
+        run: |
+          set -euo pipefail
+          echo "::group::smw_ tables after"
+          kubectl exec -i "$POD" -c php-mediawiki -- \
+            php /var/www/mediawiki/maintenance/run.php sql <<'SQL' | tee /tmp/after.txt
+          SHOW TABLES LIKE 'wikismw\_%';
+          SQL
+          echo "::endgroup::"
+
+          left=$(grep -oE 'wikismw_[A-Za-z0-9_]+' /tmp/after.txt | sort -u || true)
+          if [ -n "$left" ]; then
+            echo "::warning::These smw_ tables were NOT dropped -- they belong to a fixed"
+            echo "property whose extension is already gone, so the store never knew about"
+            echo "them. Drop them with SQL:"
+            echo "$left" | sed 's/^/  /'
+          else
+            echo "No smw_ tables remain."
+          fi
+
+      - name: What to do next
+        run: |
+          echo "The store is gone but SemanticMediaWiki is still loaded in the deployed"
+          echo "image. Until an SMW-less image is live:"
+          echo "  * every edit and uncached parse hits a missing table"
+          echo "  * queued smw.update jobs fail as they drain"
+          echo
+          echo "Deploy the image with SemanticMediaWiki and SemanticScribunto removed NOW,"
+          echo "and strip the SMW steps from mediawiki/php-mediawiki.yaml (the setup-store"
+          echo "initContainer) and scripts/mw-{daily,biweekly,monthly}.sh in the same change."
