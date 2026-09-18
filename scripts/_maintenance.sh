@@ -31,50 +31,6 @@ run() {
   fi
 }
 
-# run_soft <label> <maintenance script> [args...]  -- a failure is reported but
-# does NOT fail the Job. Only for steps whose non-zero exit is expected and
-# benign; say why at each call site.
-run_soft() {
-  name=$1
-  shift
-  echo "::: $name"
-  if php /var/www/mediawiki/maintenance/run.php "$@"; then
-    echo "::: $name OK"
-  else
-    rc=$?
-    echo "::: $name exited $rc (tolerated, not failing the job)"
-  fi
-}
-
-# SMW does NOT create its --exception-log directory, and File::write() throws
-# FileNotWritableException when it is missing. That throw escapes
-# --ignore-exceptions and kills the whole rebuild at the first entity that
-# throws, so the directory has to exist before any step that passes the flag.
-prepare_exception_log() {
-  mkdir -p "$1"
-}
-
-# --exception-log writes into the pod's ephemeral /tmp, which is unreadable
-# without kubectl, so cat it into the job output.
-dump_exception_log() {
-  dir=$1
-  # A missing directory is not a clean run -- it is the failure above, where
-  # exceptions could not be recorded at all. Reporting it as "no exceptions"
-  # states the opposite of what happened.
-  if [ ! -d "$dir" ]; then
-    echo "::: exception-log directory $dir is missing -- exceptions could NOT be recorded"
-    return
-  fi
-  found=0
-  for f in "$dir"/*; do
-    [ -f "$f" ] || continue
-    found=1
-    echo "::: exception log: $f"
-    cat "$f"
-  done
-  [ "$found" -eq 1 ] || echo "::: no exceptions logged"
-}
-
 finish() {
   if [ "$fail" -ne 0 ]; then
     # Name them: the operator triages this through Loki, where scrolling back

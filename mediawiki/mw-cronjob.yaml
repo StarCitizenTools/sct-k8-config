@@ -117,13 +117,11 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      # These retries are NEWLY reachable: the old chain's `|| echo` swallowed a
-      # failure in every step before rebuildData, so the Job could not fail. A
-      # retry re-runs the whole script including rebuildData, and this is the job
-      # that wedged a node on 2026-06-15, so bound it. activeDeadlineSeconds is
-      # wall-clock across all attempts, so it caps the total either way.
-      # restartPolicy stays OnFailure so rebuildData's --auto-recovery can resume
-      # an in-place restart after an eviction or OOM kill.
+      # A retry re-runs the whole script. This job wedged a node on 2026-06-15
+      # when it still ran SemanticMediaWiki:rebuildData, so it stays bounded --
+      # activeDeadlineSeconds is wall-clock across all attempts. Now that only
+      # updateSpecialPages and initSiteStats remain, the 6h ceiling is far
+      # larger than the run needs; it is a backstop, not a budget.
       backoffLimit: 1
       activeDeadlineSeconds: 21600
       template:
@@ -133,17 +131,13 @@ spec:
               configMap:
                 name: maintenance-scripts
           containers:
-            # Steps live in scripts/mw-biweekly.sh; the rebuildData flags are
-            # explained there. A true full rebuild (drift repair) stays an
-            # on-demand op:
-            #   run.php SemanticMediaWiki:rebuildData --force-update --auto-recovery
+            # Steps live in scripts/mw-biweekly.sh.
             - name: cronjob-mw-biweekly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.09.18.675
-              # This job (SemanticMediaWiki:rebuildData over ~282k entities) was the
-              # direct trigger of the 2026-06-15 11:40 UTC outage: BestEffort + no
-              # limit -> ~4 of 4 cores -> kubelet wedged. The cap is the load-bearing
-              # fix. NOTE: the run is also pathologically slow (~7% in 3.5h); the
-              # command itself likely needs revisiting (batch size / shallow update).
+              # This job was the direct trigger of the 2026-06-15 11:40 UTC outage,
+              # back when it ran SemanticMediaWiki:rebuildData over ~282k entities:
+              # BestEffort + no limit -> ~4 of 4 cores -> kubelet wedged. The cap is
+              # what made that unrepeatable, so it stays whatever the steps cost.
               resources:
                 requests:
                   cpu: "250m"

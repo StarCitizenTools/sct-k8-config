@@ -6,6 +6,5 @@ set -u
 run cleanupUploadStash        cleanupUploadStash
 run cleanupWatchlist          cleanupWatchlist --fix
 run refreshLinks              refreshLinks --dfn-only
-run removeDuplicateEntities   SemanticMediaWiki:removeDuplicateEntities
 
 finish
