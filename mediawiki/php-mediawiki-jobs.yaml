@@ -44,9 +44,9 @@ spec:
               cpu: "100m"
             limits:
               memory: "1Gi"
-              # Not higher: valkey also requests 100m, so it ties this container
-              # on weight wherever the two are co-scheduled.
-              cpu: "1000m"
+              # Under the ~2.3 cores the 3 runners use in a cascade, so a shared
+              # node keeps about a core idle at peak.
+              cpu: "2000m"
           envFrom:
             - secretRef:
                 name: mediawiki-keys
