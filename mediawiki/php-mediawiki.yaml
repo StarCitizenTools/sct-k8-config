@@ -57,7 +57,7 @@ spec:
             value: "2"
       containers:
         - name: php-mediawiki
-          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.24.692
+          image: ghcr.io/starcitizentools/mediawiki:smw-26.09.24.693
           ports:
             - containerPort: 9000
           # Gate traffic on php-fpm actually listening. TCP-only on purpose: a
