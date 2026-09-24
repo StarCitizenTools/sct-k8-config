@@ -19,6 +19,18 @@ spec:
       securityContext:
         fsGroup: 33
         runAsUser: 33
+      # Prefer the node without valkey: it also carries opensearch and is the
+      # one that runs short on memory. Soft, so the runner still schedules there
+      # when it has to.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: valkey
+                topologyKey: kubernetes.io/hostname
       # DNS-resolution hardening -- see php-mediawiki.yaml / PR #32.
       dnsConfig:
         options:
