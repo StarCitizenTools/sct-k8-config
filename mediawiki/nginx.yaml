@@ -33,10 +33,17 @@ spec:
     spec:
       securityContext:
         fsGroup: 33
+      # Hard one-per-node: a soft preference loses to the scheduler's
+      # resource-balance scoring. pod-template-hash counts only the new
+      # ReplicaSet mid-roll; Honor leaves a NotReady or cordoned node out of
+      # the count so the surviving node can take the replacement.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          matchLabelKeys:
+            - pod-template-hash
           labelSelector:
             matchLabels:
               app: nginx
