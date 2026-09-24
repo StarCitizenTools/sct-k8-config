@@ -43,6 +43,14 @@ spec:
       minBackoff: 30ms
       minShards: 1
     url: https://prometheus.starcitizen.tools/api/v1/write
+    # The kubelet ServiceMonitor also selects a stale kube-system/kubelet
+    # Service that lists node .47 under the wrong node name (plus a dead .53),
+    # so every container on that node is scraped twice. The
+    # prometheus-operator-kube-p-kubelet copy covers both nodes; drop the other.
+    writeRelabelConfigs:
+    - sourceLabels: [job, service]
+      regex: kubelet;kubelet
+      action: drop
   additionalArgs:
   - name: storage.agent.retention.max-time
     value: 2h
