@@ -416,6 +416,7 @@ jobs:
             ["mediawiki/nginx-config.yaml"]="deployment/nginx"
             ["mediawiki/mariadb-config.yaml"]="statefulset/mariadb-sts"
             ["mediawiki/valkey-config.yaml"]="statefulset/valkey-sts"
+            ["mediawiki/jobqueue-exporter.yaml"]="deployment/jobqueue-exporter"
           )
 
           declare -A to_restart
