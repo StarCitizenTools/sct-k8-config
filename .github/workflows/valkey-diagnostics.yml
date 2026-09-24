@@ -80,20 +80,64 @@ jobs:
           echo "=== Top $TOP_N key prefixes (count  prefix) ==="
           head -n "$TOP_N" prefixes.txt
 
+      - name: Memory by key group (sampled)
+        run: |
+          # How much of maxmemory is evictable cache vs. data that must survive
+          # eviction (sessions, main stash, job queue), which all share this
+          # allkeys-lru instance. Keys are grouped by keyspace + component
+          # (WANCache keys by the component after their keyspace), and each
+          # group's bytes are estimated from up to 300 random MEMORY USAGE calls.
+          $VALKEY_EXEC valkey-cli --scan > allkeys.txt
+          echo "keys scanned: $(wc -l < allkeys.txt)"
+          awk -F: '{ g = ($1 == "WANCache") ? "WANCache:" $3 : $1 ":" $2; print g "\t" $0 }' \
+            allkeys.txt > grouped.tsv
+          cut -f1 grouped.tsv | sort | uniq -c | sort -rn > group-counts.txt
+          sort -R grouped.tsv | awk -F'\t' '++n[$1] <= 300' > sample.tsv
+
+          # Quote each key for valkey-cli's argument parser, then run them all
+          # through one exec; each reply is one line (an integer, or empty if
+          # the key expired since the scan).
+          memory_usage() {
+            sed 's/[\\"]/\\&/g; s/.*/MEMORY USAGE "&"/' \
+              | kubectl exec -i "$VALKEY_POD" -c valkey -- valkey-cli
+          }
+          cut -f2 sample.tsv | memory_usage > sizes.txt
+          paste sample.tsv sizes.txt \
+            | awk -F'\t' '$3 ~ /^[0-9]+$/ { s[$1] += $3; c[$1]++ }
+                          END { for (g in s) printf "%s\t%d\n", g, s[g] / c[g] }' > group-mean.tsv
+
+          used=$($VALKEY_EXEC valkey-cli INFO memory | awk -F: '/^used_memory:/ { print $2 + 0 }')
+          echo "used_memory: $((used / 1048576)) MiB"
+          echo
+          echo "=== Estimated memory by key group (top $TOP_N by size) ==="
+          printf '%-44s %9s %10s %9s %6s\n' group keys avg_bytes est_MiB share
+          awk -v used="$used" -F'\t' 'NR == FNR { mean[$1] = $2; next }
+              { split($0, f, " "); n = f[1]; g = f[2]; est = n * mean[g]
+                printf "%-44s %9d %10d %9.1f %5.1f%%\n", g, n, mean[g], est / 1048576, 100 * est / used }' \
+            group-mean.tsv group-counts.txt | sort -k4 -rn > group-memory.txt
+          head -n "$TOP_N" group-memory.txt
+
+          echo
+          echo "=== Job queue (every key measured) ==="
+          grep -E '(^|:)jobqueue:' allkeys.txt | memory_usage > jq-sizes.txt || true
+          awk '/^[0-9]+$/ { s += $1; n++ }
+               END { printf "jobqueue keys=%d  bytes=%d (%.1f MiB)\n", n, s, s / 1048576 }' jq-sizes.txt
+
       - name: Parser-cache fragmentation
         run: |
           # One cursor-based scan of all ParserOutput variant keys, streamed to the
-          # runner so parsing uses the runner's awk/sed. Key shape (MediaWiki 1.43):
-          #   <wikiId>:pcache:idhash:<pageid>-0!<opt=val!...>   ('-0' is constant;
-          #   '!canonical' = an all-default, unfragmented parse).
-          $VALKEY_EXEC valkey-cli --scan --pattern '*pcache:idhash:*' > idhash.txt
+          # runner so parsing uses the runner's awk/sed. Key shape (MediaWiki 1.46):
+          #   <wikiId>:pcache:<pageid>:|#|:idhash:<opt=val!...>
+          #   ('canonical' = an all-default, unfragmented parse). The leading ':'
+          #   keeps parsoid-pcache keys out.
+          $VALKEY_EXEC valkey-cli --scan --pattern '*:pcache:*:idhash:*' > idhash.txt
           total=$(wc -l < idhash.txt)
           echo "ParserOutput (idhash) variant keys: $total"
           [ "$total" -eq 0 ] && { echo "none found"; exit 0; }
 
           # Per-page variant counts, computed once to a file. Everything downstream
           # reads the file (never 'sort | head'), which is what avoids SIGPIPE noise.
-          sed -E 's#.*:idhash:([0-9]+).*#\1#' idhash.txt | sort | uniq -c | sort -rn > counts.txt
+          sed -E 's#.*:pcache:([0-9]+):.*#\1#' idhash.txt | sort | uniq -c | sort -rn > counts.txt
 
           echo
           echo "=== Variants per page ==="
@@ -108,17 +152,17 @@ jobs:
           echo
           echo "=== Which option splits the cache (suffix tally) ==="
           echo "    canonical=unfragmented | userlang=UI lang | useParsoid=VE | dateformat/thumbsize=user prefs"
-          sed -E 's/^[^!]*!//' idhash.txt | tr '!' '\n' | sed -E 's/=.*//' | sort | uniq -c | sort -rn
+          sed -E 's/.*:idhash://' idhash.txt | tr '!' '\n' | sed -E 's/=.*//' | sort | uniq -c | sort -rn
 
           echo
           echo "=== Worst-offender page ==="
           read -r variants wp < counts.txt
           echo "page_id=$wp  variants=$variants  (title via Special:Redirect/page/$wp)"
-          grep ":idhash:${wp}-" idhash.txt | sed "s/.*:idhash:${wp}-//" | sort > wp-variants.txt
+          grep ":pcache:${wp}:" idhash.txt | sed 's/.*:idhash://' | sort > wp-variants.txt
           head -n 40 wp-variants.txt
           # idoptions key is deterministic: reuse the wikiId:pcache: prefix from any idhash key.
-          prefix=$(head -1 idhash.txt | sed -E 's#(.*:pcache:)idhash:.*#\1#')
-          $VALKEY_EXEC valkey-cli GET "${prefix}idoptions:${wp}" > idoptions.txt || true
+          prefix=$(head -1 idhash.txt | sed -E 's#(.*:pcache:).*#\1#')
+          $VALKEY_EXEC valkey-cli GET "${prefix}${wp}:|#|:idoptions" > idoptions.txt || true
           if [ -s idoptions.txt ]; then
             echo "-- idoptions (cache-varying options this page records) --"
             head -c 1500 idoptions.txt; echo
