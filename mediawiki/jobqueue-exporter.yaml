@@ -1,0 +1,129 @@
+# MediaWiki job-queue depth per job type, read from JobQueueRedis's own keys in
+# valkey. Its own Deployment rather than a second script on valkey's sidecar
+# exporter, so that deploying or editing it never restarts valkey-sts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: jobqueue-exporter
+data:
+    # Exported as redis_script_values{key="<state>:<jobType>"}, with
+    # redis_script_result (1 ok / 0 error / 2 empty) saying whether it ran.
+    # redis_exporter reads the file only at start; the deploy restarts
+    # deployment/jobqueue-exporter when this file changes.
+    jobqueue.lua: |
+        -- Key layout is fixed by MediaWiki core's JobQueueRedis and mirrored in
+        -- the jobrunner (mediawiki-services-jobrunner PeriodicScriptParamsIterator):
+        --
+        --   global:jobqueue:s-queuesWithJobs      SET of ["<type>","<domain>"]
+        --   <domain>:jobqueue:<type>:l-unclaimed  LIST  backlog, waiting for a runner
+        --   <domain>:jobqueue:<type>:z-claimed    ZSET  handed to a runner
+        --   <domain>:jobqueue:<type>:z-delayed    ZSET  scheduled for later
+        --   <domain>:jobqueue:<type>:z-abandoned  ZSET  failed every attempt
+        --
+        -- Driving this off s-queuesWithJobs costs one SMEMBERS plus four O(1)
+        -- reads per active queue. The alternative, redis_exporter's --check-keys
+        -- glob, SCANs the entire keyspace (~516k keys here) on every scrape; this
+        -- instance is the one implicated in the memory-pressure node wedges, so it
+        -- does not get a new periodic full scan.
+        --
+        -- A queue is dropped from s-queuesWithJobs once it drains, so an idle job
+        -- type stops reporting rather than reporting zero. Treat a missing series
+        -- as empty (`or vector(0)`), not as a broken exporter -- redis_script_result
+        -- is what says whether this script ran.
+
+        local counts = {}
+
+        local function add(state, jobType, n)
+            -- Sum rather than assign: one wiki today, but a second $wgDBname
+            -- would collide on this key and silently drop one of the two.
+            local key = state .. ':' .. jobType
+            counts[key] = (counts[key] or 0) + n
+        end
+
+        local queues = redis.call('SMEMBERS', 'global:jobqueue:s-queuesWithJobs')
+        for i = 1, #queues do
+            -- Tolerate a malformed member rather than failing the whole scrape
+            -- and blanking every job type.
+            local decoded, queue = pcall(cjson.decode, queues[i])
+            if decoded and type(queue) == 'table' and queue[1] and queue[2] then
+                local jobType, domain = queue[1], queue[2]
+                local base = domain .. ':jobqueue:' .. jobType .. ':'
+
+                add('unclaimed', jobType, redis.call('LLEN', base .. 'l-unclaimed'))
+                add('claimed', jobType, redis.call('ZCARD', base .. 'z-claimed'))
+                add('delayed', jobType, redis.call('ZCARD', base .. 'z-delayed'))
+                add('abandoned', jobType, redis.call('ZCARD', base .. 'z-abandoned'))
+            end
+        end
+
+        -- redis_exporter expects a flat {key, value, key, value, ...} reply, and
+        -- parses it with redigo's StringMap -- which rejects RESP integers
+        -- ("not a bulk string value, got int64") and fails the whole scrape. The
+        -- values must be returned as strings; it re-parses them to float itself.
+        local result = {}
+        for key, n in pairs(counts) do
+            result[#result + 1] = key
+            result[#result + 1] = tostring(n)
+        end
+        return result
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: jobqueue-exporter
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: jobqueue-exporter
+    template:
+        metadata:
+            labels:
+                app: jobqueue-exporter
+        spec:
+            containers:
+                - name: redis-exporter
+                  image: oliver006/redis_exporter:v1.91.1
+                  args:
+                      - '--redis.addr=redis://valkey-service.default.svc.cluster.local:6379'
+                      - '--script=/scripts/jobqueue.lua'
+                      # EVAL_RO: the script cannot write to the queue it measures.
+                      - '--lua-script-read-only'
+                  ports:
+                      - containerPort: 9121
+                        name: metrics
+                  resources:
+                      requests:
+                          memory: '24Mi'
+                          cpu: '10m'
+                      limits:
+                          memory: '64Mi'
+                          cpu: '100m'
+                  volumeMounts:
+                      - name: scripts
+                        mountPath: /scripts
+                        readOnly: true
+            volumes:
+                - name: scripts
+                  configMap:
+                      name: jobqueue-exporter
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+    name: jobqueue-exporter
+    labels:
+        release: prometheus-operator
+spec:
+    selector:
+        matchLabels:
+            app: jobqueue-exporter
+    podMetricsEndpoints:
+        - port: metrics
+          interval: 30s
+          # This exporter also reports every standard valkey metric, which the
+          # valkey-sts sidecar already sends; keep only the script's output.
+          metricRelabelings:
+              - sourceLabels: [__name__]
+                regex: 'redis_script_.*'
+                action: keep
