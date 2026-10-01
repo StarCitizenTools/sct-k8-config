@@ -83,7 +83,7 @@ spec:
         spec:
             containers:
                 - name: redis-exporter
-                  image: oliver006/redis_exporter:v1.91.1
+                  image: oliver006/redis_exporter:v1.92.0
                   args:
                       - '--redis.addr=redis://valkey-service.default.svc.cluster.local:6379'
                       - '--script=/scripts/jobqueue.lua'
