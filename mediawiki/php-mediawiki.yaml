@@ -73,6 +73,21 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+            # The image leaves the MediaWiki tree owned by www-data and opcache
+            # rechecks files every 60s, so a writable root would let code
+            # execution in php-fpm rewrite the wiki's own PHP and keep it
+            # served. The only paths MediaWiki writes at runtime are the
+            # volumes below: everything else goes to S3, valkey or the DB.
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            # PHP upload bodies, ImageMagick/vips/ffmpeg scratch files and
+            # MediaWiki's own temp files (wfTempDir).
+            - name: tmp
+              mountPath: /tmp
+            # $wgCacheDirectory: localisation cache (built per language on
+            # first use) and $wgGitInfoCacheDirectory. Empty in the image.
+            - name: mw-cache
+              mountPath: /var/www/mediawiki/cache
           ports:
             - containerPort: 9000
           # Gate traffic on php-fpm actually listening. TCP-only on purpose: a
@@ -102,3 +117,10 @@ spec:
                 name: bucket-db-password
             - secretRef:
                 name: uex-keys
+      # No sizeLimit: exceeding one evicts the pod, and these held the same
+      # data unbounded in the container's writable layer before.
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: mw-cache
+          emptyDir: {}
