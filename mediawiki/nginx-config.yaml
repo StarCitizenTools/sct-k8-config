@@ -25,6 +25,23 @@ data:
           root /var/www/mediawiki;
           index index.php;
 
+          # EMERGENCY MAINTENANCE (2026-10-21): PHP core RCE CVE-2026-109618 /
+          # CVE-2026-109619 has a public reproduction and no fix until the PHP
+          # release, so nothing may reach php-fpm. The server-level return 503s
+          # every request before location matching (this also covers direct hits
+          # on the LB IP that bypass Cloudflare); the named location is entered
+          # after the server rewrite phase, so it can serve the page body.
+          # Delete through END MAINTENANCE once the patched PHP image is live.
+          error_page 503 @maintenance;
+          location @maintenance {
+            default_type text/html;
+            add_header Retry-After 3600 always;
+            add_header Cache-Control "no-store" always;
+            return 503 '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Star Citizen Wiki - Maintenance</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5"><h1>Temporarily offline</h1><p>The Star Citizen Wiki is offline as a precaution while we apply an urgent PHP security update. We expect to be back soon.</p></body></html>';
+          }
+          return 503;
+          # END MAINTENANCE
+
           # Resolve the php-fpm upstream at request time instead of once at
           # config-parse. A static `upstream { server <name> }` is resolved when
           # nginx (re)starts, so a transient CoreDNS/node blip makes nginx abort
