@@ -16,9 +16,16 @@ spec:
       labels:
         app: php-mediawiki-jobs
     spec:
+      # Same containment as php-mediawiki.yaml; the jobrunner image also ends
+      # on USER www-data.
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: 33
         runAsUser: 33
+        runAsGroup: 33
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       # Prefer the node without valkey: it also carries opensearch and is the
       # one that runs short on memory. Soft, so the runner still schedules there
       # when it has to.
@@ -47,6 +54,10 @@ spec:
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           imagePullPolicy: Always
           resources:
             requests:
@@ -75,6 +86,10 @@ spec:
           command: ["/bin/sh"]
           args:
             ["-c", "/var/www/html/mediawiki-services-jobrunner/entrypoint.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "64Mi"

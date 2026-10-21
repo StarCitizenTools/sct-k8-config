@@ -34,8 +34,19 @@ spec:
       labels:
         app: php-mediawiki
     spec:
+      # Contain a php-fpm RCE: the image already runs as www-data (33), this
+      # pins it so a base-image change can't quietly start it as root, and
+      # nothing here talks to the Kubernetes API, so don't hand out a token.
+      # php-fpm and the tools MediaWiki shells out to (ImageMagick, vips,
+      # ffmpeg, pygmentize, git) need no capabilities and run under RuntimeDefault.
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: 33
+        runAsUser: 33
+        runAsGroup: 33
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       # One pod per node when possible (soft, so it never blocks scheduling).
       topologySpreadConstraints:
         - maxSkew: 1
@@ -58,6 +69,10 @@ spec:
       containers:
         - name: php-mediawiki
           image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 9000
           # Gate traffic on php-fpm actually listening. TCP-only on purpose: a

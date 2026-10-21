@@ -175,8 +175,15 @@ spec:
             app: cronjob-sitemap
         spec:
           restartPolicy: OnFailure
+          # Same containment as mediawiki/php-mediawiki.yaml (image runs as www-data).
+          automountServiceAccountToken: false
           securityContext:
             fsGroup: 33
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           volumes:
           - name: s3-config-vol
             configMap:
@@ -197,6 +204,10 @@ spec:
           containers:
           - name: cronjob-sitemap
             image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
             # PHP's own memory_limit (--memory-limit in generate-sitemap.sh) must
             # stay well UNDER this cgroup limit: a PHP fatal is logged and exits
             # non-zero, a cgroup

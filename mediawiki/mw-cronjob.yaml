@@ -25,6 +25,14 @@ spec:
       activeDeadlineSeconds: 21600
       template:
         spec:
+          # Same containment as php-mediawiki.yaml (image runs as www-data).
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           volumes:
             - name: scripts-vol
               configMap:
@@ -32,6 +40,10 @@ spec:
           containers:
             - name: cronjob-mw-daily
               image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               # CPU limit caps the CFS quota so this maintenance job can never
               # consume a whole node and starve the kubelet (see 2026-06-15 outage:
               # an unbounded BestEffort biweekly job pinned all 4 cores -> node
@@ -75,9 +87,21 @@ spec:
     spec:
       template:
         spec:
+          # Same containment as php-mediawiki.yaml (image runs as www-data).
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: cronjob-mw-tridaily
               image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               resources:
                 requests:
                   cpu: "250m"
@@ -124,6 +148,14 @@ spec:
       activeDeadlineSeconds: 1800
       template:
         spec:
+          # Same containment as php-mediawiki.yaml (image runs as www-data).
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           volumes:
             - name: scripts-vol
               configMap:
@@ -132,6 +164,10 @@ spec:
             # Steps live in scripts/mw-biweekly.sh.
             - name: cronjob-mw-biweekly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               # Uncapped, this job wedged a node on 2026-06-15; the cap is why
               # that cannot repeat, so keep one. Requests are reserved on a
               # cluster already tight on memory, so keep them near the real cost.
@@ -176,6 +212,14 @@ spec:
     spec:
       template:
         spec:
+          # Same containment as php-mediawiki.yaml (image runs as www-data).
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           volumes:
             - name: scripts-vol
               configMap:
@@ -183,6 +227,10 @@ spec:
           containers:
             - name: cronjob-mw-monthly
               image: ghcr.io/starcitizentools/mediawiki:smw-26.10.17.713
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               resources:
                 requests:
                   cpu: "250m"
