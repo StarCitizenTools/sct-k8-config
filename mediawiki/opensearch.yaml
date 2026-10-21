@@ -35,6 +35,20 @@ spec:
       # group-writable. Same mechanism as backup-cronjob.yaml's fsGroup: 33.
       securityContext:
         fsGroup: 1000
+      # Prefer the mariadb node over valkey's: valkey (3Gi) and OpenSearch
+      # (1Gi) together push one node close to the ~7GiB used at which these
+      # nodes soft-hang. Soft on purpose -- with two nodes, a required rule
+      # leaves OpenSearch unschedulable while the other node is drained, the
+      # same trap the required valkey/mariadb anti-affinity sets.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: valkey
+                topologyKey: kubernetes.io/hostname
       initContainers:
         # Lucene needs a high mmap count (same requirement the retired Elasticsearch had).
         # busybox, NOT the OpenSearch image: that image ships no sysctl binary
