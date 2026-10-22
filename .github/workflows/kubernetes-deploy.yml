@@ -4,20 +4,108 @@ on:
   push:
     branches:
       - 'smw'
+
+# One deploy at a time: both runs would use the same pre-pull Job names. Pushes
+# that queue up collapse into the newest, which applies the whole tree anyway.
+concurrency:
+  group: deploy-smw
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # The ConfigMap restart step looks up the last successful deploy.
+  actions: read
+
 jobs:
-  docker:
+  # Checks that need no cluster access, so a bad push fails before anything is
+  # applied.
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # -s sh, not bash: these run under the MediaWiki image's dash.
+      - name: Lint shell scripts
+        run: |
+          set -euo pipefail
+          # One at a time: `sh -n a.sh b.sh` parses only a.sh and passes the
+          # rest as positional parameters, so it silently skips every file
+          # after the first.
+          for f in scripts/*.sh; do
+            echo "checking $f"
+            sh -n "$f"
+          done
+          shellcheck -s sh scripts/*.sh
+          shellcheck .github/scripts/*.sh
+          # The deploy job's ConfigMap step globs the directory, so a renamed or
+          # deleted script drops its key silently and the consuming pod then
+          # fails to mount at 01:30. Fail here instead.
+          for required in scripts/generate-sitemap.sh scripts/_maintenance.sh \
+                          scripts/mw-daily.sh scripts/mw-biweekly.sh scripts/mw-monthly.sh; do
+            test -f "$required" || { echo "::error::missing $required (a CronJob mounts it by key)"; exit 1; }
+          done
+
+      # Authenticate the runner too, so the tag-existence inspects below use
+      # the per-account Docker Hub limit instead of the shared runner-IP one.
+      - name: Docker Hub login (runner)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      # Also log into GHCR so the tag-existence inspects below can read our
+      # private app-image packages.
+      - name: GHCR login (runner)
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+      # Guard 1: fail fast if any manifest references an image tag that does
+      # not exist in the registry. A typo'd/non-existent tag otherwise leaves
+      # the pod stuck in ImagePullBackOff until the rollout times out.
+      - name: Verify image tags exist
+        run: |
+          set -euo pipefail
+          # Uncommented `image:` lines only (a leading `#` fails the anchor).
+          mapfile -t images < <(
+            grep -rhE '^[[:space:]]*image:[[:space:]]*[^[:space:]#]+' mediawiki plausible shared \
+              | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]].*$//; s/^["'\'']//; s/["'\'']$//' \
+              | sort -u
+          )
+          echo "Checking ${#images[@]} unique image references..."
+          fail=0
+          for ref in "${images[@]}"; do
+            [ -z "$ref" ] && continue
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              echo "  ok:      $ref"
+            else
+              echo "  MISSING: $ref"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more image tags do not exist in the registry. Aborting before deploy."
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
       # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
-      - uses: azure/setup-kubectl@v5
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v5
         id: install
         with:
           version: '1.34'
 
       - uses: actions/checkout@v7
-      
-      - name: Kubernetes Set Context
+
+      - name: Set kube context
         uses: Azure/k8s-set-context@v5
         with:
           cluster-type: generic
@@ -62,7 +150,7 @@ jobs:
           secret-type: 'generic'
           secret-name: plausible-config
           data: ${{ secrets.PLAUSIBLE_CONFIG }}
-      
+
       - name: BACKUP_KEYS Secret
         uses: Azure/k8s-create-secret@v6
         with:
@@ -84,30 +172,10 @@ jobs:
           secret-name: sitemap-keys
           data: ${{ secrets.SITEMAP_KEYS }}
 
-      # -s sh, not bash: these run under the MediaWiki image's dash.
-      - name: Lint shell scripts
-        run: |
-          set -euo pipefail
-          # One at a time: `sh -n a.sh b.sh` parses only a.sh and passes the
-          # rest as positional parameters, so it silently skips every file
-          # after the first.
-          for f in scripts/*.sh; do
-            echo "checking $f"
-            sh -n "$f"
-          done
-          shellcheck -s sh scripts/*.sh
-          # The ConfigMap below globs the directory, so a renamed or deleted
-          # script drops its key silently and the consuming pod then fails to
-          # mount at 01:30. Fail here instead.
-          for required in scripts/generate-sitemap.sh scripts/_maintenance.sh \
-                          scripts/mw-daily.sh scripts/mw-biweekly.sh scripts/mw-monthly.sh; do
-            test -f "$required" || { echo "::error::missing $required (a CronJob mounts it by key)"; exit 1; }
-          done
-
       # Generated, not committed as a manifest, so the scripts stay real .sh
-      # files that the step above can lint. One key per file, so adding a script
-      # needs no change here. Must precede k8s-deploy.
-      - name: Maintenance scripts ConfigMap
+      # files that the validate job can lint. One key per file, so adding a
+      # script needs no change here. Must precede k8s-deploy.
+      - name: Apply maintenance-scripts ConfigMap
         run: |
           set -euo pipefail
           kubectl create configmap maintenance-scripts \
@@ -177,50 +245,6 @@ jobs:
             fi
           done
 
-      # Authenticate the runner too, so the tag-existence inspects below use
-      # the per-account Docker Hub limit instead of the shared runner-IP one.
-      - name: Docker Hub login (runner)
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-
-      # Also log into GHCR so the tag-existence inspects below can read our
-      # private app-image packages.
-      - name: GHCR login (runner)
-        env:
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-
-      # Guard 1: fail fast if any manifest references an image tag that does
-      # not exist in the registry. A typo'd/non-existent tag otherwise leaves
-      # the pod stuck in ImagePullBackOff until the rollout times out.
-      - name: Verify image tags exist
-        run: |
-          set -euo pipefail
-          # Uncommented `image:` lines only (a leading `#` fails the anchor).
-          mapfile -t images < <(
-            grep -rhE '^[[:space:]]*image:[[:space:]]*[^[:space:]#]+' mediawiki plausible shared \
-              | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]].*$//; s/^["'\'']//; s/["'\'']$//' \
-              | sort -u
-          )
-          echo "Checking ${#images[@]} unique image references..."
-          fail=0
-          for ref in "${images[@]}"; do
-            [ -z "$ref" ] && continue
-            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
-              echo "  ok:      $ref"
-            else
-              echo "  MISSING: $ref"
-              fail=1
-            fi
-          done
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::One or more image tags do not exist in the registry. Aborting before deploy."
-            exit 1
-          fi
-
       # Guard 2: pre-pull a changed StatefulSet image onto its target node
       # BEFORE k8s-deploy rolls the workload. These DB pods are node-pinned
       # (PVC) and single-replica, so a cold first-time pull (Docker Hub
@@ -256,10 +280,10 @@ jobs:
               echo "::warning::Could not determine node for ${name}-0; skipping pre-pull (deploy will pull inline)."
               continue
             fi
-            echo "::group::Pre-pull ${wl}: ${running:-<none>} -> ${desired} on ${node}"
+            echo "Pre-pull ${wl}: ${running:-<none>} -> ${desired} on ${node}, up to 30m:"
             job="prepull-${name}"
-            kubectl delete job "$job" --ignore-not-found
-            cat <<EOF | kubectl apply -f -
+            kubectl delete job "$job" --ignore-not-found >/dev/null
+            cat <<EOF | kubectl apply -f - >/dev/null
           apiVersion: batch/v1
           kind: Job
           metadata:
@@ -277,16 +301,13 @@ jobs:
                     imagePullPolicy: IfNotPresent
                     command: ["/bin/sh", "-c", "exit 0"]
           EOF
-            echo "Waiting for image pull on ${node} (up to 30m)..."
-            if ! kubectl wait --for=condition=complete "job/${job}" --timeout=1800s; then
+            if ! .github/scripts/watch-prepull.sh 1800 "${job}=${node}"; then
               echo "::error::Pre-pull job ${job} did not complete; image may be unpullable or the pull is stuck."
               kubectl describe "job/${job}" || true
               kubectl delete job "${job}" --ignore-not-found
               exit 1
             fi
-            kubectl delete job "${job}" --ignore-not-found
-            echo "Pre-pull complete: ${desired} cached on ${node}."
-            echo "::endgroup::"
+            kubectl delete job "${job}" --ignore-not-found >/dev/null
           done
 
       # Guard 3: warm changed Deployment images on EVERY node before the
@@ -348,39 +369,37 @@ jobs:
           # One pull Job per node, pinned via nodeName. The pod inherits the
           # default SA's imagePullSecrets (patched earlier), so private GHCR
           # pulls authenticate. All Jobs start before any wait, so nodes pull in
-          # parallel.
-          echo "::group::Warm ${#changed_images[@]} image(s) on every node"
+          # parallel. The TTL outlives the 5m wait, so a node that finishes
+          # early still has its Job when the results are checked.
           pulls=()
           node_idx=0
           for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
             job="prepull-deploy-${node_idx}"
             node_idx=$((node_idx + 1))
-            kubectl delete job "$job" --ignore-not-found
-            printf 'apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: %s\nspec:\n  backoffLimit: 0\n  ttlSecondsAfterFinished: 120\n  template:\n    spec:\n      nodeName: %s\n      restartPolicy: Never\n      containers:\n%s' \
-              "$job" "$node" "$containers_yaml" | kubectl apply -f -
-            pulls+=("${job}|${node}")
+            kubectl delete job "$job" --ignore-not-found >/dev/null
+            printf 'apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: %s\nspec:\n  backoffLimit: 0\n  ttlSecondsAfterFinished: 600\n  template:\n    spec:\n      nodeName: %s\n      restartPolicy: Never\n      containers:\n%s' \
+              "$job" "$node" "$containers_yaml" | kubectl apply -f - >/dev/null
+            pulls+=("${job}=${node}")
           done
 
-          # The 5m is spent on ANY non-completion: an unpullable image
-          # (backoffLimit 0 -> Job goes Failed, which `condition=complete`
-          # does not short-circuit on) costs the full timeout too, not only a
-          # wedged node. Bounded either way; best-effort, so we warn and move on.
-          waits=()
+          # An unpullable image leaves the pod in ImagePullBackOff rather than
+          # failing it, so it costs the full 5m just like a wedged node. Bounded
+          # either way; best-effort, so we warn and move on.
+          echo "Warming ${#changed_images[@]} image(s) on ${#pulls[@]} node(s), up to 5m:"
+          .github/scripts/watch-prepull.sh 300 "${pulls[@]}" || true
           for pull in "${pulls[@]}"; do
-            kubectl wait --for=condition=complete "job/${pull%%|*}" --timeout=300s &
-            waits+=("$!")
-          done
-          for i in "${!pulls[@]}"; do
-            IFS='|' read -r job node <<<"${pulls[$i]}"
-            if ! wait "${waits[$i]}"; then
+            job=${pull%%=*}
+            node=${pull#*=}
+            if [ "$(kubectl get job "$job" -o jsonpath='{.status.succeeded}')" != 1 ]; then
               echo "::warning::Pre-pull did not complete on ${node} within 5m -- the node may be unable to pull images or start pods (run 'kubectl describe node ${node}'). Continuing; the rollout may still place pods on a healthy node."
+              echo "::group::kubectl describe job/${job}"
               kubectl describe "job/${job}" || true
+              echo "::endgroup::"
             fi
-            kubectl delete job "${job}" --ignore-not-found
+            kubectl delete job "${job}" --ignore-not-found >/dev/null
           done
-          echo "::endgroup::"
 
-      - name: Deploy to Kubernetes cluster
+      - name: Apply manifests and wait for rollouts
         uses: Azure/k8s-deploy@v7
         with:
           # Path to the manifest files which will be used for deployment.
@@ -395,8 +414,7 @@ jobs:
 
       - name: Restart workloads with changed ConfigMaps
         env:
-          BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.event.after }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # NOTE: deliberately not using `set -u` -- bash errors on
@@ -408,21 +426,28 @@ jobs:
           # Kubernetes does not natively roll a workload when its mounted
           # ConfigMap data changes -- the file on disk updates within ~60s
           # but the process inside the container has no idea. Detect changed
-          # ConfigMap files in this push and trigger a rolling restart of
-          # the consuming workloads.
+          # ConfigMap files since the last deploy and trigger a rolling
+          # restart of the consuming workloads.
+
+          # Diff from the last successful deploy rather than this push's parent,
+          # so a push whose own run failed or was collapsed into this one by the
+          # concurrency queue still gets its restarts.
+          BEFORE_SHA=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow kubernetes-deploy.yml \
+            --branch smw --status success --limit 1 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || true)
+          BEFORE_SHA=${BEFORE_SHA:-$PUSH_BEFORE_SHA}
 
           if [[ -z "${BEFORE_SHA}" || "${BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
             echo "No previous SHA (branch-create or initial push); skipping auto-restart."
             exit 0
           fi
 
-          if ! changed=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BEFORE_SHA}...${AFTER_SHA}" --jq '.files[].filename' 2>&1); then
+          if ! changed=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BEFORE_SHA}...${GITHUB_SHA}" --jq '.files[].filename' 2>&1); then
             echo "Failed to enumerate changed files: ${changed}"
             echo "Skipping auto-restart."
             exit 0
           fi
 
-          echo "Changed files in this push:"
+          echo "Changed files since ${BEFORE_SHA:0:7}:"
           printf '  %s\n' ${changed:-"(none)"}
 
           # Map: tracked ConfigMap file -> workload that needs a restart.
@@ -465,25 +490,28 @@ jobs:
             echo "CoreDNS ready replicas: $ready"
           fi
 
-      - name: Kubernetes Set Context
+  diagnose:
+    name: Diagnose failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    # Only when the deploy itself failed; a validate failure never touched the
+    # cluster.
+    if: failure() && needs.deploy.result == 'failure'
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v5
+        id: install
+        with:
+          version: '1.34'
+
+      - name: Set kube context
         uses: Azure/k8s-set-context@v5
         with:
           cluster-type: generic
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
-      
-
-  debug:
-    runs-on: ubuntu-latest
-    needs: docker
-    if: failure()
-    steps:
-      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
-      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
-      - uses: azure/setup-kubectl@v5
-        id: install
-        with:
-          version: '1.34'
 
       # A rollout can also fail because of the node a pod lands on, not the
       # workload itself -- a node that reports Ready while its container runtime
