@@ -347,9 +347,8 @@ jobs:
 
           # One pull Job per node, pinned via nodeName. The pod inherits the
           # default SA's imagePullSecrets (patched earlier), so private GHCR
-          # pulls authenticate. All Jobs are created before any is waited on,
-          # so the nodes pull side by side and the step takes as long as the
-          # slowest node rather than the sum of them.
+          # pulls authenticate. All Jobs start before any wait, so nodes pull in
+          # parallel.
           echo "::group::Warm ${#changed_images[@]} image(s) on every node"
           pulls=()
           node_idx=0
@@ -365,9 +364,7 @@ jobs:
           # The 5m is spent on ANY non-completion: an unpullable image
           # (backoffLimit 0 -> Job goes Failed, which `condition=complete`
           # does not short-circuit on) costs the full timeout too, not only a
-          # wedged node. Bounded either way, and the waits run concurrently so
-          # one stuck node does not add its 5m to the others; best-effort, so we
-          # warn and move on.
+          # wedged node. Bounded either way; best-effort, so we warn and move on.
           waits=()
           for pull in "${pulls[@]}"; do
             kubectl wait --for=condition=complete "job/${pull%%|*}" --timeout=300s &
@@ -393,10 +390,7 @@ jobs:
             shared
           strategy: basic
           action: deploy
-          # The annotations only record which run deployed each resource and
-          # pod, and nothing reads them. Writing them takes ~45s, one kubectl
-          # call per manifest and per pod, after every rollout has finished.
-          # (The action's per-manifest labelling still runs; it has no switch.)
+          # Nothing reads the run annotations, and writing them adds ~45s.
           annotate-resources: false
 
       - name: Restart workloads with changed ConfigMaps
