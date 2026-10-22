@@ -347,26 +347,41 @@ jobs:
 
           # One pull Job per node, pinned via nodeName. The pod inherits the
           # default SA's imagePullSecrets (patched earlier), so private GHCR
-          # pulls authenticate.
+          # pulls authenticate. All Jobs are created before any is waited on,
+          # so the nodes pull side by side and the step takes as long as the
+          # slowest node rather than the sum of them.
+          echo "::group::Warm ${#changed_images[@]} image(s) on every node"
+          pulls=()
           node_idx=0
           for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
             job="prepull-deploy-${node_idx}"
             node_idx=$((node_idx + 1))
-            echo "::group::Warm ${#changed_images[@]} image(s) on ${node}"
             kubectl delete job "$job" --ignore-not-found
             printf 'apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: %s\nspec:\n  backoffLimit: 0\n  ttlSecondsAfterFinished: 120\n  template:\n    spec:\n      nodeName: %s\n      restartPolicy: Never\n      containers:\n%s' \
               "$job" "$node" "$containers_yaml" | kubectl apply -f -
-            # The 5m is spent on ANY non-completion: an unpullable image
-            # (backoffLimit 0 -> Job goes Failed, which `condition=complete`
-            # does not short-circuit on) costs the full timeout too, not only a
-            # wedged node. Bounded either way; best-effort, so we warn and move on.
-            if ! kubectl wait --for=condition=complete "job/${job}" --timeout=300s; then
+            pulls+=("${job}|${node}")
+          done
+
+          # The 5m is spent on ANY non-completion: an unpullable image
+          # (backoffLimit 0 -> Job goes Failed, which `condition=complete`
+          # does not short-circuit on) costs the full timeout too, not only a
+          # wedged node. Bounded either way, and the waits run concurrently so
+          # one stuck node does not add its 5m to the others; best-effort, so we
+          # warn and move on.
+          waits=()
+          for pull in "${pulls[@]}"; do
+            kubectl wait --for=condition=complete "job/${pull%%|*}" --timeout=300s &
+            waits+=("$!")
+          done
+          for i in "${!pulls[@]}"; do
+            IFS='|' read -r job node <<<"${pulls[$i]}"
+            if ! wait "${waits[$i]}"; then
               echo "::warning::Pre-pull did not complete on ${node} within 5m -- the node may be unable to pull images or start pods (run 'kubectl describe node ${node}'). Continuing; the rollout may still place pods on a healthy node."
               kubectl describe "job/${job}" || true
             fi
             kubectl delete job "${job}" --ignore-not-found
-            echo "::endgroup::"
           done
+          echo "::endgroup::"
 
       - name: Deploy to Kubernetes cluster
         uses: Azure/k8s-deploy@v7
@@ -378,6 +393,11 @@ jobs:
             shared
           strategy: basic
           action: deploy
+          # The annotations only record which run deployed each resource and
+          # pod, and nothing reads them. Writing them takes ~45s, one kubectl
+          # call per manifest and per pod, after every rollout has finished.
+          # (The action's per-manifest labelling still runs; it has no switch.)
+          annotate-resources: false
 
       - name: Restart workloads with changed ConfigMaps
         env:
