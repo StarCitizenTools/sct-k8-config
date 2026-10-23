@@ -1,0 +1,107 @@
+name: Set up the MediaWiki database account
+
+# Creates the database account MediaWiki connects as, scoped to the wiki
+# database, and the Secret holding its password. Run it before any manifest
+# references mediawiki-db-password.
+#
+# ALL with GRANT OPTION because Extension:Bucket grants its own account access
+# to each new bucket table over MediaWiki's connection. 10.2.% is the pod
+# network.
+#
+# The SQL runs as root inside the MariaDB pod, since MediaWiki's own account
+# cannot create or alter accounts. The password is generated here and only
+# travels over stdin, so it never appears in argv or the log.
+#
+# Re-running rotates the password. Running pods keep the old one until they
+# restart, so follow a rotation with a restart.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "mediawiki" to confirm creating/rotating the account
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mediawiki-db-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      # kubectl pinned to the cluster's minor (apiserver v1.34.x) -- unpinned resolves
+      # to latest stable, outside the supported +/-1 skew. Bump when LKE upgrades.
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: '1.34'
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v5
+        with:
+          cluster-type: generic
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Confirm
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "mediawiki" ]; then
+            echo "::error::confirm must be exactly \"mediawiki\"."
+            exit 1
+          fi
+
+      - name: Create the account and its Secret
+        run: |
+          set -euo pipefail
+          # Hex so the value needs no quoting anywhere it is interpolated.
+          PW=$(openssl rand -hex 24)
+          echo "::add-mask::$PW"
+
+          # Idempotent: create-or-replace, so a rotation is the same command.
+          printf '%s' "$PW" | kubectl create secret generic mediawiki-db-password \
+            --from-file=MEDIAWIKI_DB_PASSWORD=/dev/stdin \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # \_ because _ is a wildcard in a database-level GRANT.
+          kubectl exec -i mariadb-sts-0 -c mariadb -- \
+            sh -c 'export MYSQL_PWD="$MARIADB_ROOT_PASSWORD"; exec mariadb -uroot' <<SQL
+          CREATE USER IF NOT EXISTS 'mediawiki'@'10.2.%' IDENTIFIED BY '$PW';
+          ALTER USER 'mediawiki'@'10.2.%' IDENTIFIED BY '$PW';
+          GRANT ALL PRIVILEGES ON \`scw\_PROD\`.* TO 'mediawiki'@'10.2.%' WITH GRANT OPTION;
+          SQL
+          echo "Account and Secret written."
+
+      - name: Verify
+        run: |
+          set -euo pipefail
+          echo "=== grants held by the account ==="
+          kubectl exec -i mariadb-sts-0 -c mariadb -- \
+            sh -c 'export MYSQL_PWD="$MARIADB_ROOT_PASSWORD"; exec mariadb -uroot' \
+            <<<"SHOW GRANTS FOR 'mediawiki'@'10.2.%';"
+
+          echo
+          echo "=== log in from a php-mediawiki pod with the Secret's password ==="
+          pod=$(kubectl get pods -l app=php-mediawiki \
+            --field-selector=status.phase=Running \
+            -o jsonpath='{.items[0].metadata.name}')
+          kubectl get secret mediawiki-db-password \
+            -o jsonpath='{.data.MEDIAWIKI_DB_PASSWORD}' | base64 -d |
+            kubectl exec -i "$pod" -c php-mediawiki -- php -r '
+              mysqli_report(MYSQLI_REPORT_OFF);
+              $db = new mysqli("mariadb-service.default.svc.cluster.local", "mediawiki",
+                stream_get_contents(STDIN), "scw_PROD");
+              if ($db->connect_errno) {
+                fwrite(STDERR, "Login failed: " . $db->connect_error . "\n");
+                exit(1);
+              }
+              echo "Logged in as ", $db->query("SELECT CURRENT_USER()")->fetch_row()[0], "\n";'
+
+          echo
+          echo "MediaWiki does not use the account until a manifest adds"
+          echo "mediawiki-db-password to envFrom and LocalSettings.php points at it."
