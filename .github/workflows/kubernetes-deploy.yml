@@ -186,6 +186,11 @@ jobs:
           # was never a manifest, so nothing else will ever remove it.
           kubectl delete configmap sitemap-config -n default --ignore-not-found
 
+      # CI applies without prune, so a resource dropped from the manifests
+      # stays in the cluster until it is deleted here.
+      - name: Delete resources removed from the manifests
+        run: kubectl delete service mariadb-service-temp -n default --ignore-not-found
+
       - name: CLOUDFLARE_API Secret
         uses: Azure/k8s-create-secret@v6
         with:
