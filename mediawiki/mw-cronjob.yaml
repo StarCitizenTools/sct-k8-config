@@ -39,7 +39,7 @@ spec:
                 name: maintenance-scripts
           containers:
             - name: cronjob-mw-daily
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.22.722
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.27.727
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
@@ -97,7 +97,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: cronjob-mw-tridaily
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.22.722
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.27.727
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
@@ -163,7 +163,7 @@ spec:
           containers:
             # Steps live in scripts/mw-biweekly.sh.
             - name: cronjob-mw-biweekly
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.22.722
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.27.727
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
@@ -226,7 +226,7 @@ spec:
                 name: maintenance-scripts
           containers:
             - name: cronjob-mw-monthly
-              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.22.722
+              image: ghcr.io/starcitizentools/mediawiki:smw-26.10.27.727
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
