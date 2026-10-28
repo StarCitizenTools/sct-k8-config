@@ -203,7 +203,7 @@ spec:
             emptyDir: {}
           containers:
           - name: cronjob-sitemap
-            image: ghcr.io/starcitizentools/mediawiki:smw-26.10.27.728
+            image: ghcr.io/starcitizentools/mediawiki:smw-26.10.28.731
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
