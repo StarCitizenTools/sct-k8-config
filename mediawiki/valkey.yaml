@@ -42,6 +42,9 @@ spec:
             labels:
                 app: valkey
         spec:
+            # Room for the preStop background snapshot (up to 30s to start,
+            # ~20-25s to write) before the kubelet escalates to SIGKILL.
+            terminationGracePeriodSeconds: 90
             # Never share a node with mariadb.
             affinity:
                 podAntiAffinity:
@@ -75,28 +78,31 @@ spec:
                         mountPath: /data
                       - name: valkey-config-volume
                         mountPath: /usr/local/etc/valkey
-                # redis_exporter sidecar: connects to valkey on localhost:6379 and
-                # exposes INFO stats (used_memory, evicted_keys, keyspace hit/miss,
-                # mem_fragmentation_ratio, rdb_last_bgsave_status) on :9121 for the
-                # PodMonitor below. Read-only; its HTTP server starts even if valkey
-                # is unreachable, so it won't crashloop. docker.io pull is covered by
-                # the default SA's dockerhub-pull imagePullSecret. This adds a 2nd
-                # container, so a bad tag would block pod-Ready -- the deploy's
-                # "Verify image tags exist" guard catches that before rollout.
-                - name: redis-exporter
-                  image: oliver006/redis_exporter:v1.97.0
-                  args:
-                      - '--redis.addr=redis://localhost:6379'
-                  ports:
-                      - containerPort: 9121
-                        name: metrics
-                  resources:
-                      requests:
-                          memory: '24Mi'
-                          cpu: '10m'
-                      limits:
-                          memory: '64Mi'
-                          cpu: '100m'
+                  # On SIGTERM valkey writes its final snapshot synchronously (~20s
+                  # at ~3 GB) and answers nothing meanwhile; MediaWiki's connects
+                  # still succeed, so every cache call waits out its read timeout
+                  # and the whole site stalls (2026-11-16). Snapshot in the
+                  # background instead, then exit without the blocking save. If no
+                  # background save could start or it failed, fall through to the
+                  # usual SIGTERM save so durability never drops.
+                  lifecycle:
+                      preStop:
+                          exec:
+                              command:
+                                  - sh
+                                  - -c
+                                  - |
+                                    started=
+                                    for i in $(seq 30); do
+                                      if valkey-cli BGSAVE 2>/dev/null | grep -q started; then started=1; break; fi
+                                      sleep 1
+                                    done
+                                    [ -n "$started" ] || exit 0
+                                    while valkey-cli INFO persistence | grep -q '^rdb_bgsave_in_progress:1'; do sleep 1; done
+                                    if valkey-cli INFO persistence | grep -q '^rdb_last_bgsave_status:ok'; then
+                                      valkey-cli SHUTDOWN NOSAVE >/dev/null 2>&1 || true
+                                    fi
+                                    exit 0
             volumes:
                 - name: valkey-pv
                   persistentVolumeClaim:
@@ -107,24 +113,3 @@ spec:
                       items:
                           - key: config
                             path: valkey.conf
-
----
-# Scrape target for the redis_exporter sidecar above. kube-prometheus-stack's
-# operator only selects monitors carrying its release label; this cluster's Helm
-# release is `prometheus-operator` (cf. the `prometheus-operator-kube-p-*` scrape
-# jobs). After deploy, confirm with:  up{namespace="default", pod=~"valkey.*"} == 1
-# If it never appears, the operator's podMonitorSelector uses a different label and
-# the monitoring-stack owner must adjust it (that config lives outside this repo).
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-    name: valkey
-    labels:
-        release: prometheus-operator
-spec:
-    selector:
-        matchLabels:
-            app: valkey
-    podMetricsEndpoints:
-        - port: metrics
-          interval: 30s

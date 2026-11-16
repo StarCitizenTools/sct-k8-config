@@ -1,6 +1,7 @@
-# MediaWiki job-queue depth per job type, read from JobQueueRedis's own keys in
-# valkey. Its own Deployment rather than a second script on valkey's sidecar
-# exporter, so that deploying or editing it never restarts valkey-sts.
+# valkey's exporter: the standard INFO metrics (memory, evictions, keyspace
+# hit/miss, last bgsave status) plus MediaWiki job-queue depth per job type, read
+# from JobQueueRedis's own keys. Its own Deployment rather than a sidecar on
+# valkey-sts, so deploying, editing or bumping it never restarts valkey.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -121,9 +122,3 @@ spec:
     podMetricsEndpoints:
         - port: metrics
           interval: 30s
-          # This exporter also reports every standard valkey metric, which the
-          # valkey-sts sidecar already sends; keep only the script's output.
-          metricRelabelings:
-              - sourceLabels: [__name__]
-                regex: 'redis_script_.*'
-                action: keep
