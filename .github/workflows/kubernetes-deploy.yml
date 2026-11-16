@@ -186,6 +186,14 @@ jobs:
           # was never a manifest, so nothing else will ever remove it.
           kubectl delete configmap sitemap-config -n default --ignore-not-found
 
+      - name: Delete superseded resources
+        run: |
+          set -euo pipefail
+          # CI applies without prune, so objects dropped from a manifest stay in
+          # the cluster unless removed here. valkey's PodMonitor scraped the old
+          # redis-exporter sidecar; jobqueue-exporter now exports those metrics.
+          kubectl delete podmonitor valkey -n default --ignore-not-found
+
       - name: CLOUDFLARE_API Secret
         uses: Azure/k8s-create-secret@v6
         with:

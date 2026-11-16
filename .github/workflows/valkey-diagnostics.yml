@@ -27,9 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VALKEY_POD: valkey-sts-0
-      # Command prefix for in-pod work. `-c valkey` targets the cache container
-      # (the pod also runs the redis-exporter sidecar, which would otherwise emit
-      # a "Defaulted container" note). Keep the pod name in sync with VALKEY_POD.
+      # Command prefix for in-pod work. `-c valkey` names the cache container
+      # explicitly. Keep the pod name in sync with VALKEY_POD.
       VALKEY_EXEC: kubectl exec valkey-sts-0 -c valkey --
       TOP_N: ${{ inputs.top_n }}
     steps:
