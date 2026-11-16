@@ -109,17 +109,30 @@ data:
             }
           }
 
+          # Root-level icons and robots.txt carry no version in their URL, and
+          # without a Cache-Control header Cloudflare's "Baseline" cache rule
+          # (edge TTL "bypass by default") sends every request to origin.
+
           # Redirect to domain root icons
           location ~* ^/favicon {
             root /var/www/mediawiki/resources/assets/favicon;
+            add_header Cache-Control "public, max-age=604800";
           }
 
           # iOS Safari probes legacy variants (-precomposed, -120x120, etc.)
           # even when apple-touch-icon.png is shipped; silence the 404 noise.
+          # `always` so those 404s are cached too, not just the real icon.
           location ~* ^/apple-touch-icon {
             root /var/www/mediawiki/resources/assets/favicon;
             log_not_found off;
             access_log off;
+            add_header Cache-Control "public, max-age=604800" always;
+          }
+
+          # Baked into the nginx image (sct-docker-images nginx/config/robots.txt);
+          # short TTL so an edited file is live within the hour of a rollout.
+          location = /robots.txt {
+            add_header Cache-Control "public, max-age=3600";
           }
 
           location /images {
